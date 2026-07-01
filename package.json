@@ -1,0 +1,21 @@
+{
+  "name": "stellarpay",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.0.1",
+    "bip39": "^3.1.0",
+    "ed25519-hd-key": "^2.0.0"
+  }
+}

@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Merchant {
+  address     String   @id          // Stellar address
+  displayName String?
+  email       String?
+  logoUrl     String?
+  verified    Boolean  @default(false)  // stub — no real KYC for MVP
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PaymentLink {
+  id          String   @id @default(cuid())
+  encodedId   String   @unique  // base64url blob used as the URL param
+  numericId   String            // timestamp-based ID passed to contract pay()
+  merchant    String            // Stellar address
+  amount      String            // stroops as string
+  description String?
+  createdAt   DateTime @default(now())
+  events      Event[]
+}
+
+model Plan {
+  id            String         @id @default(cuid())
+  onChainId     String         @unique  // u64 as string returned from create_plan
+  merchant      String
+  amount        String
+  interval      Int
+  intervalLabel String
+  createdAt     DateTime       @default(now())
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id            String   @id @default(cuid())
+  onChainId     String   @unique  // u64 as string returned from subscribe
+  planOnChainId String
+  plan          Plan     @relation(fields: [planOnChainId], references: [onChainId])
+  subscriber    String
+  merchant      String
+  amount        String
+  payerName     String?
+  payerEmail    String?
+  status        String   @default("Active")  // Active | PastDue | Canceled
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  events        Event[]
+}
+
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  merchant  String
+  url       String
+  secret    String   // whsec_ + 32 hex — HMAC-SHA256 signing secret, shown once on creation
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  merchant   String
+  name       String?
+  keyHash    String    @unique  // SHA-256 of the raw key — never stored in plaintext
+  prefix     String             // "sp_" + first 8 chars, shown in the UI
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+}
+
+model Event {
+  id             String       @id @default(cuid())
+  type           String       // payment.settled | subscription.created | subscription.charged | subscription.canceled
+  txHash         String       @unique
+  paymentLinkId  String?
+  subscriptionId String?
+  paymentLink    PaymentLink? @relation(fields: [paymentLinkId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  data           Json
+  createdAt      DateTime     @default(now())
+}

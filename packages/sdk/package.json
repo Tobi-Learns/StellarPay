@@ -1,0 +1,35 @@
+{
+  "name": "@stellarpay/sdk",
+  "version": "0.1.0",
+  "description": "JS/TS SDK for StellarPay — one-time and recurring payments on Stellar",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./react": "./dist/react.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch"
+  },
+  "peerDependencies": {
+    "@stellar/freighter-api": ">=6",
+    "@stellar/stellar-sdk": ">=16",
+    "react": ">=17"
+  },
+  "peerDependenciesMeta": {
+    "@stellar/freighter-api": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@stellar/freighter-api": "^6.0.1",
+    "@stellar/stellar-sdk": "^16.0.0",
+    "@types/react": "^19.2.17",
+    "react": "^19.2.7",
+    "typescript": "^5"
+  }
+}

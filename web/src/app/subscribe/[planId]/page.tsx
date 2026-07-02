@@ -17,6 +17,30 @@ import { loadPlans, saveSubscription } from "@/lib/plans";
 
 type Step = "idle" | "approving" | "subscribing" | "done" | "error";
 
+type RegisteredPlan = {
+  onChainId: string;
+  merchant: string;
+  amount: string;
+  interval: number;
+};
+
+async function loadPlan(planId: string): Promise<Plan> {
+  const res = await fetch(`/api/plans/${planId}`);
+  if (res.ok) {
+    const registeredPlan = (await res.json()) as RegisteredPlan;
+    return {
+      id: BigInt(registeredPlan.onChainId),
+      merchant: registeredPlan.merchant,
+      asset: process.env.NEXT_PUBLIC_TEST_USDC_SAC!,
+      amount: BigInt(registeredPlan.amount),
+      interval: registeredPlan.interval,
+      active: true,
+    };
+  }
+
+  return getPlan(BigInt(planId));
+}
+
 export default function SubscribeCheckoutPage({
   params,
 }: {
@@ -34,7 +58,7 @@ export default function SubscribeCheckoutPage({
   const [payerEmail, setPayerEmail] = useState("");
 
   useEffect(() => {
-    getPlan(BigInt(planId))
+    loadPlan(planId)
       .then(setPlan)
       .catch(() => setPlan(null))
       .finally(() => setLoading(false));

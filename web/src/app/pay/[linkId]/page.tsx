@@ -8,6 +8,8 @@ import { decodeLink } from "@/lib/payment-links";
 
 interface MerchantProfile { displayName?: string | null; verified?: boolean }
 
+type DecodedPaymentLink = ReturnType<typeof decodeLink> & { numericId?: string };
+
 export default function CheckoutPage({
   params,
 }: {
@@ -22,7 +24,7 @@ export default function CheckoutPage({
   const [payerName, setPayerName] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
 
-  let link: ReturnType<typeof decodeLink> | null = null;
+  let link: DecodedPaymentLink | null = null;
   let decodeError = false;
   try {
     link = decodeLink(linkId);
@@ -63,7 +65,10 @@ export default function CheckoutPage({
     setErrorMsg("");
 
     try {
-      const xdr = await buildPayXdr(address, link.merchant, BigInt(link.amount), BigInt(link.id));
+      const linkNumericId = link.id ?? link.numericId;
+      if (!linkNumericId) throw new Error("Payment link is missing its numeric id.");
+
+      const xdr = await buildPayXdr(address, link.merchant, BigInt(link.amount), BigInt(linkNumericId));
       const signedTxXdr = await signTransaction(xdr);
 
       setStatus("submitting");

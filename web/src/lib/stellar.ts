@@ -15,6 +15,10 @@ const RPC_URL = process.env.NEXT_PUBLIC_SOROBAN_RPC_URL!;
 const PASSPHRASE = Networks.TESTNET;
 const CONTRACT_ID = process.env.NEXT_PUBLIC_STELLARPAY_CONTRACT_ID!;
 const TEST_USDC = process.env.NEXT_PUBLIC_TEST_USDC_SAC!;
+const VIEW_SOURCE_ACCOUNT =
+  process.env.CRON_ADMIN_ADDRESS ??
+  process.env.NEXT_PUBLIC_PLATFORM_ADDRESS ??
+  CONTRACT_ID;
 
 const server = new rpc.Server(RPC_URL, { allowHttp: false });
 const stellarPay = new Contract(CONTRACT_ID);
@@ -224,15 +228,8 @@ export function buildCancelXdr(
 // ── read-only views ───────────────────────────────────────────────────────────
 
 export async function getPlan(planId: bigint): Promise<Plan> {
-  const account = await server.getAccount(CONTRACT_ID).catch(() =>
-    // views don't need a real account; use the contract address as a dummy source
-    ({ accountId: () => CONTRACT_ID, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as never)
-  );
-
   const tx = new TransactionBuilder(
-    await server.getAccount(CONTRACT_ID).catch(
-      () => ({ accountId: () => CONTRACT_ID, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as never)
-    ),
+    await getViewAccount(),
     { fee: BASE_FEE, networkPassphrase: PASSPHRASE }
   )
     .addOperation(
@@ -250,9 +247,7 @@ export async function getPlan(planId: bigint): Promise<Plan> {
 
 export async function getSubscription(subId: bigint): Promise<Subscription> {
   const tx = new TransactionBuilder(
-    await server.getAccount(CONTRACT_ID).catch(
-      () => ({ accountId: () => CONTRACT_ID, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as never)
-    ),
+    await getViewAccount(),
     { fee: BASE_FEE, networkPassphrase: PASSPHRASE }
   )
     .addOperation(
@@ -265,7 +260,11 @@ export async function getSubscription(subId: bigint): Promise<Subscription> {
   if (rpc.Api.isSimulationError(sim) || !("result" in sim) || !sim.result) {
     throw new Error("Failed to fetch subscription");
   }
-  return scValToNative(sim.result.retval) as Subscription;
+  const subscription = scValToNative(sim.result.retval) as Subscription & { status: unknown };
+  return {
+    ...subscription,
+    status: normalizeStatus(subscription.status),
+  };
 }
 
 // ── utils ─────────────────────────────────────────────────────────────────────
@@ -291,4 +290,16 @@ export function truncateAddress(addr: string): string {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+async function getViewAccount() {
+  return server.getAccount(VIEW_SOURCE_ACCOUNT).catch(
+    () => ({ accountId: () => VIEW_SOURCE_ACCOUNT, sequenceNumber: () => "0", incrementSequenceNumber: () => {} } as never)
+  );
+}
+
+function normalizeStatus(status: unknown): Subscription["status"] {
+  const value = Array.isArray(status) ? status[0] : status;
+  if (value === "Active" || value === "PastDue" || value === "Canceled") return value;
+  throw new Error(`Unknown subscription status: ${String(value)}`);
 }

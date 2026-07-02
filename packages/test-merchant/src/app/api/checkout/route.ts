@@ -8,12 +8,20 @@ const MERCHANT = process.env.MERCHANT_ADDRESS!;
 // The client never sees the API key — it just gets back a linkId to pay.
 export async function POST(req: NextRequest) {
   try {
-    const { amount, description } = await req.json() as { amount: string; description: string };
+    const { amount, description, createLink = false } = await req.json() as {
+      amount: string;
+      description: string;
+      createLink?: boolean;
+    };
 
     const numericId = String(Date.now());
     const encodedId = Buffer.from(
-      JSON.stringify({ merchant: MERCHANT, amount, numericId, description })
+      JSON.stringify({ id: numericId, merchant: MERCHANT, amount, numericId, description, createdAt: Date.now() })
     ).toString("base64url");
+
+    if (!createLink) {
+      return NextResponse.json({ encodedId, numericId });
+    }
 
     const res = await fetch(`${API_BASE}/api/payments`, {
       method: "POST",

@@ -152,7 +152,24 @@ export default function EmbeddedCheckoutPage() {
                     merchant={MERCHANT}
                     amount={AMOUNT}
                     linkId={linkNumericId}
-                    onSuccess={(hash) => { setTxHash(hash); setPageState("success"); }}
+                    onSuccess={(hash) => {
+                      fetch("/api/events", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          type: "payment.settled",
+                          txHash: hash,
+                          data: {
+                            amount: AMOUNT_STR,
+                            merchant: MERCHANT,
+                            linkId: linkNumericId.toString(),
+                            payerName: "Embedded checkout",
+                          },
+                        }),
+                      }).catch(() => {});
+                      setTxHash(hash);
+                      setPageState("success");
+                    }}
                     onError={(e) => setPayError(e.message)}
                     style={{
                       width: "100%", padding: "15px",

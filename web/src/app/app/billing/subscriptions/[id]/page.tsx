@@ -2,16 +2,77 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { useWallet } from "@/lib/wallet-context";
 import {
   getSubscription,
-  buildChargeXdr,
-  submitAndWait,
   formatUsdc,
   truncateAddress,
   type Subscription,
 } from "@/lib/stellar";
 import { findSubscription } from "@/lib/plans";
+
+type SubscriptionRecord = {
+  onChainId: string;
+  planOnChainId: string;
+  subscriber: string;
+  amount: string;
+  status: Subscription["status"];
+  nextCharge?: number;
+  createdLedger?: number;
+  estimatedNextChargeAt?: string;
+  nextChargeOverdue?: boolean;
+};
+
+type SubscriptionView = Subscription & {
+  amount?: string;
+  estimatedNextChargeAt?: string;
+  nextChargeOverdue?: boolean;
+};
+
+async function loadSubscription(id: string): Promise<SubscriptionView> {
+  const res = await fetch(`/api/subscriptions/${id}`);
+  if (res.ok) {
+    const record = (await res.json()) as SubscriptionRecord;
+    return {
+      id: BigInt(record.onChainId),
+      plan_id: BigInt(record.planOnChainId),
+      subscriber: record.subscriber,
+      status: record.status,
+      amount: record.amount,
+      next_charge: record.nextCharge ?? 0,
+      created_at: record.createdLedger ?? 0,
+      estimatedNextChargeAt: record.estimatedNextChargeAt,
+      nextChargeOverdue: record.nextChargeOverdue,
+    };
+  }
+
+  return getSubscription(BigInt(id));
+}
+
+function formatNextCharge(sub: SubscriptionView): string {
+  if (sub.estimatedNextChargeAt) {
+    const date = new Date(sub.estimatedNextChargeAt);
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+    const suffix = sub.nextChargeOverdue
+      ? `${formatUtcOffset(date)}, overdue`
+      : formatUtcOffset(date);
+    return `${formatted} (${suffix})`;
+  }
+  return sub.next_charge > 0 ? `Ledger ${sub.next_charge}` : "Unavailable";
+}
+
+function formatUtcOffset(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absMinutes = Math.abs(offsetMinutes);
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+  return minutes === 0
+    ? `UTC${sign}${hours}`
+    : `UTC${sign}${hours}:${minutes.toString().padStart(2, "0")}`;
+}
 
 export default function SubscriptionDetailPage({
   params,
@@ -19,133 +80,62 @@ export default function SubscriptionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { address, signTransaction } = useWallet();
 
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [sub, setSub] = useState<SubscriptionView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [chargeStatus, setChargeStatus] = useState<"idle" | "signing" | "submitting" | "done" | "error">("idle");
-  const [chargeMsg, setChargeMsg] = useState("");
-  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
 
   const stored = findSubscription(id);
 
   useEffect(() => {
-    getSubscription(BigInt(id))
+    loadSubscription(id)
       .then(setSub)
       .catch(() => setSub(null))
       .finally(() => setLoading(false));
   }, [id]);
 
-  async function handleCharge() {
-    if (!address || !sub) return;
-    setChargeStatus("signing");
-    setChargeMsg("");
-
-    try {
-      const xdr = await buildChargeXdr(address, BigInt(id));
-      const signedXdr = await signTransaction(xdr);
-
-      setChargeStatus("submitting");
-      const txHash = await submitAndWait(signedXdr);
-
-      setLastTxHash(txHash);
-      setChargeStatus("done");
-
-      // Write event + refresh on-chain state
-      fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "subscription.charged", txHash, data: { subId: id } }),
-      }).catch(() => {});
-      getSubscription(BigInt(id)).then((s) => {
-        setSub(s);
-        fetch(`/api/subscriptions/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: s.status }),
-        }).catch(() => {});
-      }).catch(() => {});
-    } catch (err) {
-      setChargeStatus("error");
-      setChargeMsg(err instanceof Error ? err.message : "Charge failed");
-    }
-  }
-
-  const chargeBusy = chargeStatus === "signing" || chargeStatus === "submitting";
-
   return (
     <div className="max-w-lg">
       <div className="flex items-center gap-2 mb-6">
         <Link href="/app/billing" className="text-sm text-neutral-400 hover:text-neutral-700">
-          ← Billing
+          &larr; Billing
         </Link>
         <span className="text-neutral-300">/</span>
         <span className="text-sm">Subscription #{id}</span>
       </div>
 
       {loading ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-neutral-400">Loading...</p>
       ) : !sub ? (
-        <p className="text-sm text-neutral-500">Subscription not found on-chain.</p>
+        <p className="text-sm text-neutral-500">Subscription not found.</p>
       ) : (
-        <>
-          <div className="bg-white border border-neutral-200 rounded-lg p-5 mb-5">
-            <div className="grid grid-cols-2 gap-y-3 text-sm">
-              <span className="text-neutral-400">Status</span>
-              <span className={`font-medium ${sub.status === "Active" ? "text-green-600" : sub.status === "PastDue" ? "text-amber-600" : "text-neutral-500"}`}>
-                {sub.status}
-              </span>
+        <div className="bg-white border border-neutral-200 rounded-lg p-5 mb-5">
+          <div className="grid grid-cols-2 gap-y-3 text-sm">
+            <span className="text-neutral-400">Status</span>
+            <span className={`font-medium ${sub.status === "Active" ? "text-green-600" : sub.status === "PastDue" ? "text-amber-600" : "text-neutral-500"}`}>
+              {sub.status}
+            </span>
 
-              <span className="text-neutral-400">Subscriber</span>
-              <span className="font-mono text-xs">{truncateAddress(sub.subscriber)}</span>
+            <span className="text-neutral-400">Subscriber</span>
+            <span className="font-mono text-xs">{truncateAddress(sub.subscriber)}</span>
 
-              {stored && (
-                <>
-                  <span className="text-neutral-400">Amount</span>
-                  <span>{formatUsdc(BigInt(stored.amount))} USDC</span>
+            {(stored || sub.amount) && (
+              <>
+                <span className="text-neutral-400">Amount</span>
+                <span>{formatUsdc(BigInt(stored?.amount ?? sub.amount ?? "0"))} USDC</span>
 
-                  <span className="text-neutral-400">Interval</span>
-                  <span>{stored.intervalLabel}</span>
-                </>
-              )}
+                {stored && (
+                  <>
+                    <span className="text-neutral-400">Interval</span>
+                    <span>{stored.intervalLabel}</span>
+                  </>
+                )}
+              </>
+            )}
 
-              <span className="text-neutral-400">Next charge</span>
-              <span className="font-mono text-xs">ledger {sub.next_charge}</span>
-            </div>
+            <span className="text-neutral-400">Next charge</span>
+            <span className="font-mono text-xs">{formatNextCharge(sub)}</span>
           </div>
-
-          {chargeStatus === "done" && lastTxHash && (
-            <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4">
-              <p className="text-xs text-green-700 font-medium mb-1">Charge successful</p>
-              <a
-                href={`https://stellar.expert/explorer/testnet/tx/${lastTxHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-mono text-green-600 underline break-all"
-              >
-                {lastTxHash}
-              </a>
-            </div>
-          )}
-
-          {chargeStatus === "error" && (
-            <p className="text-xs text-red-500 mb-4">{chargeMsg}</p>
-          )}
-
-          <button
-            onClick={handleCharge}
-            disabled={chargeBusy || sub.status === "Canceled"}
-            className="w-full py-2.5 rounded-lg bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {chargeStatus === "signing" && "Waiting for signature…"}
-            {chargeStatus === "submitting" && "Submitting charge…"}
-            {(chargeStatus === "idle" || chargeStatus === "done" || chargeStatus === "error") && "Run charge"}
-          </button>
-
-          <p className="mt-2 text-xs text-center text-neutral-400">
-            Subscriber does not need to sign — only you (merchant) sign.
-          </p>
-        </>
+        </div>
       )}
     </div>
   );

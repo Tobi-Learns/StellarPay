@@ -37,9 +37,24 @@ const SUBSCRIBE_HREF: Record<Tab, string> = {
   headless: "/subscribe/headless",
 };
 
+const TAB_PRICES: Record<Tab, { oneTime: string; subscription: string }> = {
+  hosted: { oneTime: "4", subscription: "1" },
+  embedded: { oneTime: "5", subscription: "2" },
+  headless: { oneTime: "7", subscription: "3" },
+};
+
 export default function Page() {
   const [tab, setTab] = useState<Tab>("hosted");
   const meta = TAB_META[tab];
+  const prices = TAB_PRICES[tab];
+  const oneTimePrice = `$${prices.oneTime}.00`;
+  const subscriptionPrice = `$${prices.subscription}.00`;
+  const oneTimeButtonLabel = tab === "hosted"
+    ? "Checkout via StellarPay →"
+    : `Buy Now — ${prices.oneTime} USDC`;
+  const subscriptionButtonLabel = tab === "hosted"
+    ? "Subscribe via StellarPay →"
+    : `Subscribe — ${prices.subscription} USDC/mo`;
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -109,7 +124,7 @@ export default function Page() {
           <div style={{ padding: 28 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Premium Coffee Bundle</h2>
-              <span style={{ fontSize: 20, fontWeight: 700, color: "#d97706" }}>$5.00</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: "#d97706" }}>{oneTimePrice}</span>
             </div>
             <p style={{ color: "#78716c", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
               250g of single-origin Ethiopian Yirgacheffe, freshly roasted. Bright, floral, and full of life.
@@ -127,7 +142,7 @@ export default function Page() {
                 textDecoration: "none",
               }}
             >
-              {tab === "hosted" ? "Checkout via StellarPay →" : "Buy Now — 5 USDC"}
+              {oneTimeButtonLabel}
             </Link>
           </div>
         </div>
@@ -141,7 +156,7 @@ export default function Page() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>Monthly Coffee Club</h2>
               <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: 20, fontWeight: 700, color: "#059669" }}>$2.00</span>
+                <span style={{ fontSize: 20, fontWeight: 700, color: "#059669" }}>{subscriptionPrice}</span>
                 <span style={{ fontSize: 12, color: "#78716c" }}>/mo</span>
               </div>
             </div>
@@ -161,7 +176,7 @@ export default function Page() {
                 textDecoration: "none",
               }}
             >
-              {tab === "hosted" ? "Subscribe via StellarPay →" : "Subscribe — 2 USDC/mo"}
+              {subscriptionButtonLabel}
             </Link>
           </div>
         </div>

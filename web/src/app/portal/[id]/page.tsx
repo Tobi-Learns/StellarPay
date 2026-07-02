@@ -13,6 +13,73 @@ import {
 } from "@/lib/stellar";
 import { findSubscription } from "@/lib/plans";
 
+type SubscriptionRecord = {
+  onChainId: string;
+  planOnChainId: string;
+  subscriber: string;
+  merchant: string;
+  amount: string;
+  status: Subscription["status"];
+  nextCharge?: number;
+  createdLedger?: number;
+  estimatedNextChargeAt?: string;
+  nextChargeOverdue?: boolean;
+};
+
+type SubscriptionView = Subscription & {
+  merchant?: string;
+  amount?: string;
+  estimatedNextChargeAt?: string;
+  nextChargeOverdue?: boolean;
+};
+
+async function loadSubscription(id: string): Promise<SubscriptionView> {
+  const res = await fetch(`/api/subscriptions/${id}`);
+  if (res.ok) {
+    const record = (await res.json()) as SubscriptionRecord;
+    return {
+      id: BigInt(record.onChainId),
+      plan_id: BigInt(record.planOnChainId),
+      subscriber: record.subscriber,
+      merchant: record.merchant,
+      amount: record.amount,
+      status: record.status,
+      next_charge: record.nextCharge ?? 0,
+      created_at: record.createdLedger ?? 0,
+      estimatedNextChargeAt: record.estimatedNextChargeAt,
+      nextChargeOverdue: record.nextChargeOverdue,
+    };
+  }
+
+  return getSubscription(BigInt(id));
+}
+
+function formatNextCharge(sub: SubscriptionView): string {
+  if (sub.estimatedNextChargeAt) {
+    const date = new Date(sub.estimatedNextChargeAt);
+    const formatted = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+    const suffix = sub.nextChargeOverdue
+      ? `${formatUtcOffset(date)}, overdue`
+      : formatUtcOffset(date);
+    return `${formatted} (${suffix})`;
+  }
+  return sub.next_charge > 0 ? `Ledger ${sub.next_charge}` : "Unavailable";
+}
+
+function formatUtcOffset(date: Date): string {
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absMinutes = Math.abs(offsetMinutes);
+  const hours = Math.floor(absMinutes / 60);
+  const minutes = absMinutes % 60;
+  return minutes === 0
+    ? `UTC${sign}${hours}`
+    : `UTC${sign}${hours}:${minutes.toString().padStart(2, "0")}`;
+}
+
 export default function ManageSubscriptionPage({
   params,
 }: {
@@ -21,7 +88,7 @@ export default function ManageSubscriptionPage({
   const { id } = use(params);
   const { address, signTransaction } = useWallet();
 
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [sub, setSub] = useState<SubscriptionView | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelStatus, setCancelStatus] = useState<"idle" | "signing" | "submitting" | "done" | "error">("idle");
   const [cancelMsg, setCancelMsg] = useState("");
@@ -29,7 +96,7 @@ export default function ManageSubscriptionPage({
   const stored = findSubscription(id);
 
   useEffect(() => {
-    getSubscription(BigInt(id))
+    loadSubscription(id)
       .then(setSub)
       .catch(() => setSub(null))
       .finally(() => setLoading(false));
@@ -48,7 +115,9 @@ export default function ManageSubscriptionPage({
       await submitAndWait(signedXdr);
 
       setCancelStatus("done");
-      getSubscription(BigInt(id)).then(setSub).catch(() => {});
+      getSubscription(BigInt(id)).then(setSub).catch(() => {
+        setSub((current) => current ? { ...current, status: "Canceled" } : current);
+      });
 
       // Write-through: mark canceled in DB
       const txHash = signedXdr.slice(0, 64); // use first 64 chars as a stable key
@@ -84,7 +153,7 @@ export default function ManageSubscriptionPage({
       {loading ? (
         <p className="text-sm text-neutral-400">Loading…</p>
       ) : !sub ? (
-        <p className="text-sm text-neutral-500">Subscription not found on-chain.</p>
+        <p className="text-sm text-neutral-500">Subscription not found.</p>
       ) : (
         <>
           <div className="bg-white border border-neutral-200 rounded-lg p-5 mb-5">
@@ -95,20 +164,24 @@ export default function ManageSubscriptionPage({
               </span>
 
               <span className="text-neutral-400">Merchant</span>
-              <span className="font-mono text-xs">{truncateAddress(sub.subscriber)}</span>
+              <span className="font-mono text-xs">{truncateAddress(sub.merchant ?? sub.subscriber)}</span>
 
-              {stored && (
+              {(stored || sub.amount) && (
                 <>
                   <span className="text-neutral-400">Amount</span>
-                  <span>{formatUsdc(BigInt(stored.amount))} USDC</span>
+                  <span>{formatUsdc(BigInt(stored?.amount ?? sub.amount ?? "0"))} USDC</span>
 
-                  <span className="text-neutral-400">Interval</span>
-                  <span>{stored.intervalLabel}</span>
+                  {stored && (
+                    <>
+                      <span className="text-neutral-400">Interval</span>
+                      <span>{stored.intervalLabel}</span>
+                    </>
+                  )}
                 </>
               )}
 
               <span className="text-neutral-400">Next charge</span>
-              <span className="font-mono text-xs">ledger {sub.next_charge}</span>
+              <span className="font-mono text-xs">{formatNextCharge(sub)}</span>
             </div>
           </div>
 

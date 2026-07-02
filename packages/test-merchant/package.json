@@ -4,14 +4,14 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "next build",
+    "build": "npm --prefix ../sdk install && npm --prefix ../sdk run build && next build",
     "start": "next start -p 3001"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^16.0.0",
     "@stellarpay/sdk": "file:../sdk",
-    "next": "15.3.3",
+    "next": "^15.3.9",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

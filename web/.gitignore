@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Vercel CLI artifacts — but NOT .env itself, which is committed (testnet-only values)
+.vercel
+.env.local
+.env*.local

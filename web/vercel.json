@@ -2,22 +2,5 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm install",
-  "outputDirectory": ".next",
-  "env": {
-    "NEXT_PUBLIC_STELLARPAY_CONTRACT_ID": "@stellarpay_contract_id",
-    "NEXT_PUBLIC_TEST_USDC_SAC": "@test_usdc_sac",
-    "NEXT_PUBLIC_PLATFORM_ADDRESS": "@platform_address",
-    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
-    "TRANSACTION_URL": "@transaction_url",
-    "SESSION_URL": "@session_url",
-    "CRON_ADMIN_ADDRESS": "@cron_admin_address",
-    "CRON_ADMIN_SECRET": "@cron_admin_secret",
-    "CRON_SECRET": "@cron_secret"
-  },
-  "crons": [
-    {
-      "path": "/api/cron/charge",
-      "schedule": "* * * * *"
-    }
-  ]
+  "outputDirectory": ".next"
 }

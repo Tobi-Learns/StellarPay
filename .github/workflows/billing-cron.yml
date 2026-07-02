@@ -1,0 +1,48 @@
+# Subscription billing scheduler (B1).
+# Vercel Hobby crons only run once per day, so the 15-min charge pass and the
+# retry pass are triggered from here instead. GitHub's schedule minimum is
+# 5 minutes, so retries run */5 rather than the nominal */3 — the retry
+# endpoint only touches subscriptions whose nextRetryAt has passed, so the
+# coarser cadence just adds up to 2 minutes of delay.
+#
+# Required repo secrets:
+#   STELLARPAY_BASE_URL — production deployment URL, no trailing slash
+#   CRON_SECRET         — must match the CRON_SECRET env var on Vercel
+#
+# Note: scheduled workflows only fire from the default branch, and GitHub may
+# delay them by a few minutes under load.
+
+name: billing-cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *" # charge pass
+    - cron: "*/5 * * * *"  # retry pass
+  workflow_dispatch:
+    inputs:
+      pass:
+        description: "Which pass to run"
+        type: choice
+        options: [both, charge, retry]
+        default: both
+
+jobs:
+  charge:
+    if: github.event.schedule == '*/15 * * * *' || (github.event_name == 'workflow_dispatch' && inputs.pass != 'retry')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run charge pass
+        run: |
+          curl --fail-with-body -sS -m 300 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.STELLARPAY_BASE_URL }}/api/cron/charge"
+
+  retry:
+    if: github.event.schedule == '*/5 * * * *' || (github.event_name == 'workflow_dispatch' && inputs.pass != 'charge')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run retry pass
+        run: |
+          curl --fail-with-body -sS -m 300 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.STELLARPAY_BASE_URL }}/api/cron/retry"

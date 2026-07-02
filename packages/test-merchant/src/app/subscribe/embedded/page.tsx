@@ -37,6 +37,9 @@ export default function SubscribeEmbeddedPage() {
   const [step, setStep] = useState<Step>("idle");
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
+  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
+  const [payerName, setPayerName] = useState("Jerry Rig");
+  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   async function handleSubscribe() {
     setStep("connecting");
@@ -124,6 +127,8 @@ export default function SubscribeEmbeddedPage() {
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
           anchorAt: anchor.toISOString(),
+          payerName: payerName.trim() || undefined,
+          payerEmail: payerEmail.trim() || undefined,
         }),
       });
       if (!regRes.ok) {
@@ -230,6 +235,25 @@ export default function SubscribeEmbeddedPage() {
           <p style={{ fontSize: 12, color: "#a8a29e", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 28, fontWeight: 600 }}>
             Authorize subscription
           </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+            <input
+              type="text"
+              placeholder="Full name"
+              value={payerName}
+              onChange={(e) => setPayerName(e.target.value)}
+              disabled={isActive}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+            <input
+              type="email"
+              placeholder="Email address"
+              value={payerEmail}
+              onChange={(e) => setPayerEmail(e.target.value)}
+              disabled={isActive}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+          </div>
 
           {/* Steps */}
           <div style={{ display: "flex", flexDirection: "column", gap: 20, marginBottom: 36 }}>

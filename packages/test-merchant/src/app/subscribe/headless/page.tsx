@@ -57,6 +57,9 @@ export default function HeadlessSubscribePage() {
   const [planId, setPlanId] = useState<bigint | null>(null);
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
+  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
+  const [payerName, setPayerName] = useState("Jerry Rig");
+  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   const statusLabel = useMemo(() => {
     switch (step) {
@@ -193,6 +196,8 @@ export default function HeadlessSubscribePage() {
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
           anchorAt: anchor.toISOString(),
+          payerName: payerName.trim() || undefined,
+          payerEmail: payerEmail.trim() || undefined,
         }),
       });
 
@@ -281,6 +286,23 @@ export default function HeadlessSubscribePage() {
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <input
+              type="text"
+              placeholder="Full name"
+              value={payerName}
+              onChange={(e) => setPayerName(e.target.value)}
+              disabled={isWorking}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+            <input
+              type="email"
+              placeholder="Email address"
+              value={payerEmail}
+              onChange={(e) => setPayerEmail(e.target.value)}
+              disabled={isWorking}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+
             <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fafaf9" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <p style={{ color: "#57534e", fontSize: 14, fontWeight: 600, margin: 0 }}>{statusLabel}</p>

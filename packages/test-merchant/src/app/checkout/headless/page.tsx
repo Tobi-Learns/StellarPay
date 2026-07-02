@@ -37,6 +37,9 @@ export default function HeadlessCheckoutPage() {
   const [payer, setPayer] = useState("");
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
+  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
+  const [payerName, setPayerName] = useState("Jerry Rig");
+  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   const stepLabel = useMemo(() => {
     switch (step) {
@@ -132,19 +135,16 @@ export default function HeadlessCheckoutPage() {
 
       setStep("submitting");
       const hash = await c.submitAndWait(signedPayXdr);
-      fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "payment.settled",
-          txHash: hash,
-          data: {
-            amount: AMOUNT_STR,
-            merchant: MERCHANT_ADDRESS,
-            linkId: link.numericId,
-            payerWallet: access.address,
-          },
-        }),
+      // Headless pattern (2k): record the settled payment via the SDK —
+      // /api/events sends CORS headers, so no server-side proxy is needed.
+      c.recordPaymentSettled({
+        txHash: hash,
+        merchant: MERCHANT_ADDRESS,
+        amount: AMOUNT_STR,
+        linkId: link.numericId,
+        payerName: payerName.trim() || undefined,
+        payerEmail: payerEmail.trim() || undefined,
+        payerWallet: access.address,
       }).catch(() => {});
       setTxHash(hash);
       setStep("success");
@@ -233,6 +233,23 @@ export default function HeadlessCheckoutPage() {
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <input
+              type="text"
+              placeholder="Full name"
+              value={payerName}
+              onChange={(e) => setPayerName(e.target.value)}
+              disabled={isWorking}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+            <input
+              type="email"
+              placeholder="Email address"
+              value={payerEmail}
+              onChange={(e) => setPayerEmail(e.target.value)}
+              disabled={isWorking}
+              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
+            />
+
             <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fafaf9" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <p style={{ color: "#57534e", fontSize: 14, fontWeight: 600, margin: 0 }}>{stepLabel}</p>

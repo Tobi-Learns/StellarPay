@@ -70,6 +70,28 @@ export async function buildTxXdr(
   return rpc.assembleTransaction(tx, simResult).build().toXDR();
 }
 
+/** Best-effort extraction of the RPC rejection reason (e.g. txBadSeq, txInsufficientFee). */
+function describeSendError(sendResult: rpc.Api.SendTransactionResponse): string {
+  try {
+    const code = sendResult.errorResult?.result().switch().name;
+    if (code) return code;
+  } catch {
+    /* errorResult not present or not decodable */
+  }
+  return sendResult.status;
+}
+
+/** Best-effort extraction of an on-chain failure reason from a FAILED getTransaction result. */
+function describeFailure(status: rpc.Api.GetFailedTransactionResponse): string {
+  try {
+    const code = status.resultXdr?.result().switch().name;
+    if (code) return code;
+  } catch {
+    /* resultXdr not present or not decodable */
+  }
+  return "unknown";
+}
+
 /**
  * Submit a signed XDR, wait for confirmation, and return the contract's return value.
  * Useful for calls that return a value (e.g. subscribe → sub ID).
@@ -79,7 +101,9 @@ export async function submitAndWaitWithResult(
 ): Promise<{ hash: string; returnValue: unknown }> {
   const tx = TransactionBuilder.fromXDR(signedXdr, PASSPHRASE);
   const sendResult = await server.sendTransaction(tx);
-  if (sendResult.status === "ERROR") throw new Error("Transaction submission failed");
+  if (sendResult.status === "ERROR") {
+    throw new Error(`Transaction submission failed: ${describeSendError(sendResult)}`);
+  }
 
   for (let i = 0; i < 30; i++) {
     await sleep(1000);
@@ -89,7 +113,7 @@ export async function submitAndWaitWithResult(
       return { hash: sendResult.hash, returnValue };
     }
     if (status.status === rpc.Api.GetTransactionStatus.FAILED) {
-      throw new Error("Transaction failed on-chain");
+      throw new Error(`Transaction failed on-chain (${sendResult.hash}): ${describeFailure(status)}`);
     }
   }
   throw new Error("Transaction confirmation timeout");
@@ -101,7 +125,7 @@ export async function submitAndWait(signedXdr: string): Promise<string> {
   const sendResult = await server.sendTransaction(tx);
 
   if (sendResult.status === "ERROR") {
-    throw new Error("Transaction submission failed");
+    throw new Error(`Transaction submission failed: ${describeSendError(sendResult)}`);
   }
 
   // Poll until confirmed
@@ -112,7 +136,7 @@ export async function submitAndWait(signedXdr: string): Promise<string> {
       return sendResult.hash;
     }
     if (status.status === rpc.Api.GetTransactionStatus.FAILED) {
-      throw new Error("Transaction failed on-chain");
+      throw new Error(`Transaction failed on-chain (${sendResult.hash}): ${describeFailure(status)}`);
     }
   }
   throw new Error("Transaction confirmation timeout");

@@ -1,16 +1,29 @@
-export const INTERVALS = [
-  { label: "Demo (50 ledgers ≈ 4 min)", value: 50 },
-  { label: "Daily (17,280 ledgers)", value: 17280 },
-  { label: "Weekly (120,960 ledgers)", value: 120960 },
-  { label: "Monthly (518,400 ledgers)", value: 518400 },
+import type { Interval, IntervalUnit } from "./billing-schedule";
+
+/** Billing interval options for the create-plan form. Real calendar units (2.1). */
+export const INTERVALS: { label: string; unit: IntervalUnit; count: number }[] = [
+  { label: "Demo (every 5 minutes)", unit: "minute", count: 5 },
+  { label: "Daily", unit: "day", count: 1 },
+  { label: "Weekly", unit: "week", count: 1 },
+  { label: "Monthly", unit: "month", count: 1 },
+  { label: "Quarterly", unit: "month", count: 3 },
+  { label: "Yearly", unit: "year", count: 1 },
 ];
+
+export function intervalOf(p: { intervalUnit: IntervalUnit; intervalCount: number }): Interval {
+  return { unit: p.intervalUnit, count: p.intervalCount };
+}
 
 export interface StoredPlan {
   onChainId: string;    // u64 as string
   merchant: string;
   amount: string;       // stroops
-  interval: number;     // ledgers
+  interval: number;     // min_interval_secs — the on-chain cadence floor
   intervalLabel: string;
+  // Optional: present when written by the create-plan form; the list views that
+  // hydrate from the API only need the label.
+  intervalUnit?: IntervalUnit;
+  intervalCount?: number;
   createdAt: number;
 }
 
@@ -20,8 +33,14 @@ export interface StoredSubscription {
   subscriber: string;
   merchant: string;
   amount: string;       // stroops (plan amount)
-  interval: number;
+  interval: number;     // min_interval_secs
   intervalLabel: string;
+  // Optional: interval details live on the plan, so subscription rows hydrated
+  // from the API won't carry them — only the localStorage write-through does.
+  intervalUnit?: IntervalUnit;
+  intervalCount?: number;
+  anchorAt?: string;    // ISO subscribe date
+  periodsCharged?: number;
   createdAt: number;
 }
 

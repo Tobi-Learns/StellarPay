@@ -8,6 +8,16 @@ export type {
   SubscriptionRecord,
 } from "./types";
 
+// Billing schedule helpers — anchor-aligned calendar math (2.1).
+export {
+  billingDateAfter,
+  firstNextChargeAt,
+  minIntervalSeconds,
+  computeCatchUp,
+  toUnixSeconds,
+} from "./schedule";
+export type { Interval, IntervalUnit, CatchUp } from "./schedule";
+
 // ── Utils ─────────────────────────────────────────────────────────────────────
 
 const USDC_DECIMALS = 7;
@@ -31,7 +41,7 @@ import type { StellarPayConfig } from "./types";
 
 /** Ready-to-use config for the deployed testnet environment. */
 export const TESTNET: Omit<StellarPayConfig, "apiBase"> = {
-  contractId: "CDKBHMS7GYH7IIY6XAMQYF7HRXD62OR2B7ZEFWXFGREC6HP4BKOS5YNF",
+  contractId: "CAD3U6SL2ABFMX7GKFLTL7GQYDEGDEEPILYC26FCEKIGVQ5VCLCZ3CKG",
   sacAddress: "CAKBCKBUE3ZRSNH6CDYAB62ZFWL7U7OX6NBZ6EUDFID22PRLICFJXHGS",
   rpcUrl: "https://soroban-testnet.stellar.org",
   horizonUrl: "https://horizon-testnet.stellar.org",

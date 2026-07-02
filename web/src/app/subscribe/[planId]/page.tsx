@@ -13,7 +13,13 @@ import {
   truncateAddress,
   type Plan,
 } from "@/lib/stellar";
-import { loadPlans, saveSubscription } from "@/lib/plans";
+import { saveSubscription } from "@/lib/plans";
+import {
+  firstNextChargeAt,
+  toUnixSeconds,
+  type Interval,
+  type IntervalUnit,
+} from "@/lib/billing-schedule";
 
 type Step = "idle" | "approving" | "subscribing" | "done" | "error";
 
@@ -22,23 +28,40 @@ type RegisteredPlan = {
   merchant: string;
   amount: string;
   interval: number;
+  intervalUnit?: IntervalUnit;
+  intervalCount?: number;
+  intervalLabel?: string;
 };
 
-async function loadPlan(planId: string): Promise<Plan> {
+type LoadedPlan = { plan: Plan; interval: Interval; intervalLabel: string };
+
+async function loadPlan(planId: string): Promise<LoadedPlan> {
   const res = await fetch(`/api/plans/${planId}`);
   if (res.ok) {
     const registeredPlan = (await res.json()) as RegisteredPlan;
+    const interval: Interval = {
+      unit: registeredPlan.intervalUnit ?? "month",
+      count: registeredPlan.intervalCount ?? 1,
+    };
     return {
-      id: BigInt(registeredPlan.onChainId),
-      merchant: registeredPlan.merchant,
-      asset: process.env.NEXT_PUBLIC_TEST_USDC_SAC!,
-      amount: BigInt(registeredPlan.amount),
-      interval: registeredPlan.interval,
-      active: true,
+      plan: {
+        id: BigInt(registeredPlan.onChainId),
+        merchant: registeredPlan.merchant,
+        asset: process.env.NEXT_PUBLIC_TEST_USDC_SAC!,
+        amount: BigInt(registeredPlan.amount),
+        min_interval_secs: registeredPlan.interval,
+        active: true,
+      },
+      interval,
+      intervalLabel: registeredPlan.intervalLabel ?? `${interval.count} ${interval.unit}`,
     };
   }
 
-  return getPlan(BigInt(planId));
+  const plan = await getPlan(BigInt(planId));
+  // Fallback when the plan isn't registered in the DB: reconstruct an approximate
+  // interval from the on-chain floor so date math still works.
+  const days = Math.max(1, Math.round(plan.min_interval_secs / 86_400));
+  return { plan, interval: { unit: "day", count: days }, intervalLabel: `${days} day(s)` };
 }
 
 export default function SubscribeCheckoutPage({
@@ -50,22 +73,25 @@ export default function SubscribeCheckoutPage({
   const { address, connect, signTransaction } = useWallet();
   const router = useRouter();
 
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [loaded, setLoaded] = useState<LoadedPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<Step>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [payerName, setPayerName] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
 
+  const plan = loaded?.plan ?? null;
+
   useEffect(() => {
     loadPlan(planId)
-      .then(setPlan)
-      .catch(() => setPlan(null))
+      .then(setLoaded)
+      .catch(() => setLoaded(null))
       .finally(() => setLoading(false));
   }, [planId]);
 
   async function handleSubscribe() {
-    if (!address || !plan) return;
+    if (!address || !loaded) return;
+    const { plan, interval, intervalLabel } = loaded;
     if (!payerName.trim() || !payerEmail.trim()) {
       setStep("error");
       setErrorMsg("Please enter your name and email before subscribing.");
@@ -85,14 +111,16 @@ export default function SubscribeCheckoutPage({
       const signedApprove = await signTransaction(approveXdr);
       await submitAndWaitWithResult(signedApprove);
 
-      // Step 2 — subscribe
+      // Step 2 — subscribe. Anchor the schedule to now and pass the first
+      // billing date (computed from the plan's real interval) to the contract.
       setStep("subscribing");
-      const subscribeXdr = await buildSubscribeXdr(address, BigInt(planId));
+      const anchor = new Date();
+      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, interval));
+      const subscribeXdr = await buildSubscribeXdr(address, BigInt(planId), nextChargeAt);
       const signedSubscribe = await signTransaction(subscribeXdr);
       const { hash: subscribeTxHash, returnValue } = await submitAndWaitWithResult(signedSubscribe);
 
       const subId = String(returnValue as bigint);
-      const storedPlan = loadPlans().find((p) => p.onChainId === planId);
 
       const subData = {
         onChainId: subId,
@@ -100,8 +128,12 @@ export default function SubscribeCheckoutPage({
         subscriber: address,
         merchant: plan.merchant,
         amount: plan.amount.toString(),
-        interval: Number(plan.interval),
-        intervalLabel: storedPlan?.intervalLabel ?? `${plan.interval} ledgers`,
+        interval: plan.min_interval_secs,
+        intervalLabel,
+        intervalUnit: interval.unit,
+        intervalCount: interval.count,
+        anchorAt: anchor.toISOString(),
+        periodsCharged: 1,
         payerName: payerName.trim(),
         payerEmail: payerEmail.trim(),
         createdAt: Date.now(),

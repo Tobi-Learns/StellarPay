@@ -82,20 +82,22 @@ export class StellarPayClient {
   buildCreatePlanXdr(
     merchant: string,
     amount: bigint,
-    interval: number
+    minIntervalSecs: number
   ): Promise<string> {
     return buildTxXdr(this.cfg, merchant, this.contract.call(
       "create_plan",
       new Address(merchant).toScVal(),
       new Address(this.cfg.sacAddress).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
-      nativeToScVal(interval, { type: "u32" }),
+      nativeToScVal(BigInt(minIntervalSecs), { type: "u64" }),
     ));
   }
 
   /**
    * Register a plan in the hosted DB after it has been created on-chain.
    * `onChainId` is the u64 returned by the create_plan contract call.
+   * `interval` is min_interval_secs; `intervalUnit`/`intervalCount` describe the
+   * real calendar interval used for date math.
    */
   async registerPlan(opts: {
     onChainId: string;
@@ -103,6 +105,8 @@ export class StellarPayClient {
     amount: string;
     interval: number;
     intervalLabel: string;
+    intervalUnit: string;
+    intervalCount: number;
   }): Promise<PlanRecord> {
     return this._post("/api/plans", opts);
   }
@@ -134,14 +138,17 @@ export class StellarPayClient {
   }
 
   /**
-   * Build XDR for subscribing to a plan. Runs the first charge immediately.
+   * Build XDR for subscribing to a plan. Runs the first charge immediately and
+   * sets the next due date to `nextChargeAt` (a UTC unix timestamp — compute it
+   * with `firstNextChargeAt(anchor, interval)` then `toUnixSeconds`).
    * After signing and submitting, capture the returned subId and call registerSubscription().
    */
-  buildSubscribeXdr(subscriber: string, planId: bigint): Promise<string> {
+  buildSubscribeXdr(subscriber: string, planId: bigint, nextChargeAt: number): Promise<string> {
     return buildTxXdr(this.cfg, subscriber, this.contract.call(
       "subscribe",
       new Address(subscriber).toScVal(),
       nativeToScVal(planId, { type: "u64" }),
+      nativeToScVal(BigInt(nextChargeAt), { type: "u64" }),
     ));
   }
 
@@ -166,6 +173,7 @@ export class StellarPayClient {
     amount: string;
     payerName?: string;
     payerEmail?: string;
+    anchorAt?: string; // ISO subscribe date — the anchor for billing-date math
   }): Promise<SubscriptionRecord> {
     return this._post("/api/subscriptions", opts);
   }
@@ -185,7 +193,8 @@ export class StellarPayClient {
       this.cfg,
       this.contract.call("get_plan", nativeToScVal(planId, { type: "u64" }))
     );
-    return scValToNative(sim.result!.retval) as Plan;
+    const plan = scValToNative(sim.result!.retval) as Plan & { min_interval_secs: bigint | number };
+    return { ...plan, min_interval_secs: Number(plan.min_interval_secs) };
   }
 
   async getSubscription(subId: bigint): Promise<Subscription> {
@@ -193,7 +202,11 @@ export class StellarPayClient {
       this.cfg,
       this.contract.call("get_subscription", nativeToScVal(subId, { type: "u64" }))
     );
-    return scValToNative(sim.result!.retval) as Subscription;
+    const sub = scValToNative(sim.result!.retval) as Subscription & {
+      next_charge_at: bigint | number;
+      created_at: bigint | number;
+    };
+    return { ...sub, next_charge_at: Number(sub.next_charge_at), created_at: Number(sub.created_at) };
   }
 
   async getCurrentLedger(): Promise<number> {

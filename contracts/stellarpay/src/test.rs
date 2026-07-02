@@ -20,11 +20,13 @@ struct TestEnv {
 }
 
 const FEE_BPS: u32 = 100; // 1%
-const INTERVAL: u32 = 100; // ledgers
+const INTERVAL: u64 = 2_592_000; // 30 days in seconds — the plan's min_interval_secs
+const BASE_TS: u64 = 1_700_000_000; // fixed base so timestamp math is realistic
 
 fn setup() -> TestEnv {
     let env = Env::default();
     env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = BASE_TS);
 
     let admin = Address::generate(&env);
     let platform = Address::generate(&env);
@@ -54,17 +56,26 @@ fn setup() -> TestEnv {
     }
 }
 
-fn client(t: &TestEnv) -> StellarPayContractClient {
+fn client(t: &TestEnv) -> StellarPayContractClient<'_> {
     StellarPayContractClient::new(&t.env, &t.contract)
 }
 
-fn token(t: &TestEnv) -> TokenClient {
+fn token(t: &TestEnv) -> TokenClient<'_> {
     TokenClient::new(&t.env, &t.asset)
 }
 
 fn approve(t: &TestEnv, amount: i128) {
     let expiry = t.env.ledger().sequence() + 10_000;
     token(t).approve(&t.subscriber, &t.contract, &amount, &expiry);
+}
+
+/// Advance the ledger clock by `secs`.
+fn advance_secs(t: &TestEnv, secs: u64) {
+    t.env.ledger().with_mut(|l| l.timestamp += secs);
+}
+
+fn now(t: &TestEnv) -> u64 {
+    t.env.ledger().timestamp()
 }
 
 // ── pay ───────────────────────────────────────────────────────────────────────
@@ -124,8 +135,22 @@ fn create_plan_stores_correctly() {
     let plan = client(&t).get_plan(&plan_id);
     assert_eq!(plan.merchant, t.merchant);
     assert_eq!(plan.amount, amount);
-    assert_eq!(plan.interval, INTERVAL);
+    assert_eq!(plan.min_interval_secs, INTERVAL);
     assert!(plan.active);
+}
+
+#[test]
+#[should_panic(expected = "interval must be positive")]
+fn create_plan_zero_interval_panics() {
+    let t = setup();
+    client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &0);
+}
+
+#[test]
+#[should_panic(expected = "amount must be positive")]
+fn create_plan_zero_amount_panics() {
+    let t = setup();
+    client(&t).create_plan(&t.merchant, &t.asset, &0, &INTERVAL);
 }
 
 // ── subscribe ─────────────────────────────────────────────────────────────────
@@ -140,7 +165,7 @@ fn subscribe_runs_first_charge() {
     let sub_before = token(&t).balance(&t.subscriber);
     approve(&t, amount * 10);
 
-    client(&t).subscribe(&t.subscriber, &plan_id);
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
     assert_eq!(token(&t).balance(&t.merchant), amount - fee);
     assert_eq!(token(&t).balance(&t.platform), fee);
@@ -153,12 +178,22 @@ fn subscribe_sets_next_charge() {
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
 
-    let now = t.env.ledger().sequence();
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let next = now(&t) + INTERVAL;
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &next);
     let sub = client(&t).get_subscription(&sub_id);
 
-    assert_eq!(sub.next_charge, now + INTERVAL);
+    assert_eq!(sub.next_charge_at, next);
     assert_eq!(sub.status, Status::Active);
+}
+
+#[test]
+#[should_panic(expected = "next_charge_at below cadence floor")]
+fn subscribe_below_floor_panics() {
+    let t = setup();
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    approve(&t, 100_0000000 * 10);
+    // next_charge_at only 1 second out — below the min interval
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + 1));
 }
 
 // ── charge ────────────────────────────────────────────────────────────────────
@@ -170,17 +205,17 @@ fn charge_pulls_without_subscriber_signing() {
     let fee = amount * FEE_BPS as i128 / 10000;
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
     approve(&t, amount * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
-    // Advance ledger past next_charge
-    t.env.ledger().with_mut(|l| l.sequence_number += INTERVAL);
+    advance_secs(&t, INTERVAL);
 
     let merchant_before = token(&t).balance(&t.merchant);
     let platform_before = token(&t).balance(&t.platform);
     let subscriber_before = token(&t).balance(&t.subscriber);
 
-    // Merchant charges — subscriber does NOT sign this call
-    client(&t).charge(&t.merchant, &sub_id);
+    // Merchant charges one period — subscriber does NOT sign this call
+    let next = now(&t) + INTERVAL;
+    client(&t).charge(&t.merchant, &sub_id, &1, &next);
 
     assert_eq!(token(&t).balance(&t.merchant), merchant_before + amount - fee);
     assert_eq!(token(&t).balance(&t.platform), platform_before + fee);
@@ -192,15 +227,55 @@ fn charge_advances_next_charge() {
     let t = setup();
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
-    let sub_before = client(&t).get_subscription(&sub_id);
-    t.env.ledger().with_mut(|l| l.sequence_number += INTERVAL);
-
-    client(&t).charge(&t.merchant, &sub_id);
+    advance_secs(&t, INTERVAL);
+    let next = now(&t) + INTERVAL;
+    client(&t).charge(&t.merchant, &sub_id, &1, &next);
 
     let sub_after = client(&t).get_subscription(&sub_id);
-    assert_eq!(sub_after.next_charge, sub_before.next_charge + INTERVAL);
+    assert_eq!(sub_after.next_charge_at, next);
+}
+
+#[test]
+fn charge_by_admin_works() {
+    let t = setup();
+    let amount = 100_0000000_i128;
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    approve(&t, amount * 10);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+
+    advance_secs(&t, INTERVAL);
+    let merchant_before = token(&t).balance(&t.merchant);
+
+    // Admin (platform/cron key) charges — contract allows invoker == admin
+    client(&t).charge(&t.admin, &sub_id, &1, &(now(&t) + INTERVAL));
+
+    let fee = amount * FEE_BPS as i128 / 10000;
+    assert_eq!(token(&t).balance(&t.merchant), merchant_before + amount - fee);
+}
+
+#[test]
+fn charge_multi_period_pulls_arrears() {
+    let t = setup();
+    let amount = 100_0000000_i128;
+    let fee_total = (amount * 3) * FEE_BPS as i128 / 10000;
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    approve(&t, amount * 100);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+
+    let merchant_before = token(&t).balance(&t.merchant);
+    let subscriber_before = token(&t).balance(&t.subscriber);
+
+    // Three periods elapse before the next charge runs (cron was down)
+    advance_secs(&t, INTERVAL * 3);
+    let next = now(&t) + INTERVAL;
+    client(&t).charge(&t.merchant, &sub_id, &3, &next);
+
+    // One transfer collects all three periods' worth
+    assert_eq!(token(&t).balance(&t.merchant), merchant_before + amount * 3 - fee_total);
+    assert_eq!(token(&t).balance(&t.subscriber), subscriber_before - amount * 3);
+    assert_eq!(client(&t).get_subscription(&sub_id).next_charge_at, next);
 }
 
 #[test]
@@ -209,9 +284,57 @@ fn charge_before_due_panics() {
     let t = setup();
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
-    // Do not advance ledger — charge not due yet
-    client(&t).charge(&t.merchant, &sub_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    // Do not advance the clock — charge not due yet
+    client(&t).charge(&t.merchant, &sub_id, &1, &(now(&t) + INTERVAL * 2));
+}
+
+#[test]
+#[should_panic(expected = "periods must be >= 1")]
+fn charge_zero_periods_panics() {
+    let t = setup();
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    approve(&t, 100_0000000 * 10);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    advance_secs(&t, INTERVAL);
+    client(&t).charge(&t.merchant, &sub_id, &0, &(now(&t) + INTERVAL));
+}
+
+#[test]
+#[should_panic(expected = "too many periods for elapsed time")]
+fn charge_too_many_periods_panics() {
+    let t = setup();
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    approve(&t, 100_0000000 * 100);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    // Only one interval elapses, but caller tries to bill 3 periods
+    advance_secs(&t, INTERVAL);
+    client(&t).charge(&t.merchant, &sub_id, &3, &(now(&t) + INTERVAL * 3));
+}
+
+#[test]
+#[should_panic(expected = "advance below cadence floor")]
+fn charge_below_cadence_floor_panics() {
+    let t = setup();
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    approve(&t, 100_0000000 * 100);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    // Three periods elapse and caller bills 3, but only advances the schedule by ~1 interval
+    advance_secs(&t, INTERVAL * 3);
+    let due = client(&t).get_subscription(&sub_id).next_charge_at;
+    client(&t).charge(&t.merchant, &sub_id, &3, &(due + INTERVAL));
+}
+
+#[test]
+#[should_panic(expected = "not authorized")]
+fn charge_by_stranger_panics() {
+    let t = setup();
+    let stranger = Address::generate(&t.env);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    approve(&t, 100_0000000 * 10);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    advance_secs(&t, INTERVAL);
+    client(&t).charge(&stranger, &sub_id, &1, &(now(&t) + INTERVAL));
 }
 
 #[test]
@@ -220,13 +343,13 @@ fn charge_sets_past_due_on_insufficient_allowance() {
     let amount = 100_0000000_i128;
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
     approve(&t, amount * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
     // Zero out allowance so the next charge fails
     token(&t).approve(&t.subscriber, &t.contract, &0, &(t.env.ledger().sequence() + 1000));
 
-    t.env.ledger().with_mut(|l| l.sequence_number += INTERVAL);
-    client(&t).charge(&t.merchant, &sub_id);
+    advance_secs(&t, INTERVAL);
+    client(&t).charge(&t.merchant, &sub_id, &1, &(now(&t) + INTERVAL));
 
     let sub = client(&t).get_subscription(&sub_id);
     assert_eq!(sub.status, Status::PastDue);
@@ -239,7 +362,7 @@ fn cancel_sets_status() {
     let t = setup();
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
     client(&t).cancel(&t.subscriber, &sub_id);
 
@@ -253,12 +376,12 @@ fn charge_after_cancel_panics() {
     let t = setup();
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
 
     client(&t).cancel(&t.subscriber, &sub_id);
 
-    t.env.ledger().with_mut(|l| l.sequence_number += INTERVAL);
-    client(&t).charge(&t.merchant, &sub_id);
+    advance_secs(&t, INTERVAL);
+    client(&t).charge(&t.merchant, &sub_id, &1, &(now(&t) + INTERVAL));
 }
 
 #[test]
@@ -267,7 +390,7 @@ fn cancel_twice_panics() {
     let t = setup();
     let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
     client(&t).cancel(&t.subscriber, &sub_id);
     client(&t).cancel(&t.subscriber, &sub_id);
 }

@@ -9,6 +9,7 @@ import {
 } from "react";
 import { StellarWalletsKit, Networks, KitEventType } from "@creit.tech/stellar-wallets-kit";
 import { FreighterModule, FREIGHTER_ID } from "@creit.tech/stellar-wallets-kit/modules/freighter";
+import { TransactionBuilder } from "@stellar/stellar-sdk";
 
 // ── kit init (singleton, browser-only) ───────────────────────────────────────
 
@@ -75,6 +76,24 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signTransaction = useCallback(async (xdr: string): Promise<string> => {
+    // Guard against a stale connected address: if the active Freighter account no
+    // longer matches the account this tx was built for (e.g. the user switched
+    // accounts without reconnecting), signing would produce a cryptic txBadAuth
+    // at submission. Catch it here with a clear message and resync the UI.
+    try {
+      const { address: current } = await StellarWalletsKit.getAddress();
+      const parsed = TransactionBuilder.fromXDR(xdr, Networks.TESTNET);
+      const txSource = "innerTransaction" in parsed ? parsed.feeSource : parsed.source;
+      if (current && txSource !== current) {
+        setAddress(current);
+        throw new Error("Connected wallet changed — please reconnect and try again.");
+      }
+    } catch (e) {
+      // Re-throw our own guard error; ignore failures from getAddress/parsing so
+      // signing can still surface its own error path.
+      if (e instanceof Error && e.message.startsWith("Connected wallet changed")) throw e;
+    }
+
     const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
       networkPassphrase: Networks.TESTNET,
     });

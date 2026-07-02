@@ -2,13 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
+import {
+  StellarPayClient,
+  TESTNET,
+  parseUsdc,
+  minIntervalSeconds,
+  firstNextChargeAt,
+  toUnixSeconds,
+  type Interval,
+} from "@stellarpay/sdk";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS!;
-const INTERVAL = 50;
-const INTERVAL_LABEL = "Monthly (demo: 4 min)";
+const INTERVAL: Interval = { unit: "minute", count: 5 };
+const INTERVAL_LABEL = "Demo (every 5 minutes)";
 
 const AMOUNT = parseUsdc("2.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -65,7 +73,7 @@ export default function SubscribeEmbeddedPage() {
         planId = BigInt(data.planId);
       } else if (address === MERCHANT_ADDRESS) {
         // Convenience: if the subscriber IS the merchant (demo / self-hosted), create the plan now.
-        const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, INTERVAL);
+        const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, minIntervalSeconds(INTERVAL));
         const { returnValue } = await c.submitAndWaitWithResult(await sign(createXdr, address));
         planId = returnValue as bigint;
         const putRes = await fetch("/api/subscribe", {
@@ -75,8 +83,10 @@ export default function SubscribeEmbeddedPage() {
             onChainId: String(planId),
             merchant: MERCHANT_ADDRESS,
             amount: AMOUNT_STR,
-            interval: INTERVAL,
+            interval: minIntervalSeconds(INTERVAL),
             intervalLabel: INTERVAL_LABEL,
+            intervalUnit: INTERVAL.unit,
+            intervalCount: INTERVAL.count,
           }),
         });
         if (!putRes.ok) {
@@ -95,7 +105,9 @@ export default function SubscribeEmbeddedPage() {
 
       // Step 2: Subscribe — first charge runs immediately on-chain
       setStep("subscribing");
-      const subscribeXdr = await c.buildSubscribeXdr(address, planId);
+      const anchor = new Date();
+      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
+      const subscribeXdr = await c.buildSubscribeXdr(address, planId, nextChargeAt);
       const { returnValue: subReturn } = await c.submitAndWaitWithResult(
         await sign(subscribeXdr, address)
       );
@@ -111,6 +123,7 @@ export default function SubscribeEmbeddedPage() {
           subscriber: address,
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
+          anchorAt: anchor.toISOString(),
         }),
       });
       if (!regRes.ok) {

@@ -20,8 +20,7 @@ type SubscriptionRecord = {
   merchant: string;
   amount: string;
   status: Subscription["status"];
-  nextCharge?: number;
-  createdLedger?: number;
+  nextChargeAt?: number;
   estimatedNextChargeAt?: string;
   nextChargeOverdue?: boolean;
 };
@@ -44,8 +43,8 @@ async function loadSubscription(id: string): Promise<SubscriptionView> {
       merchant: record.merchant,
       amount: record.amount,
       status: record.status,
-      next_charge: record.nextCharge ?? 0,
-      created_at: record.createdLedger ?? 0,
+      next_charge_at: record.nextChargeAt ?? 0,
+      created_at: 0,
       estimatedNextChargeAt: record.estimatedNextChargeAt,
       nextChargeOverdue: record.nextChargeOverdue,
     };
@@ -55,18 +54,18 @@ async function loadSubscription(id: string): Promise<SubscriptionView> {
 }
 
 function formatNextCharge(sub: SubscriptionView): string {
-  if (sub.estimatedNextChargeAt) {
-    const date = new Date(sub.estimatedNextChargeAt);
+  const iso = sub.estimatedNextChargeAt ?? (sub.next_charge_at > 0 ? new Date(sub.next_charge_at * 1000).toISOString() : undefined);
+  if (iso) {
+    const date = new Date(iso);
+    const overdue = sub.nextChargeOverdue ?? sub.next_charge_at * 1000 < Date.now();
     const formatted = new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(date);
-    const suffix = sub.nextChargeOverdue
-      ? `${formatUtcOffset(date)}, overdue`
-      : formatUtcOffset(date);
+    const suffix = overdue ? `${formatUtcOffset(date)}, overdue` : formatUtcOffset(date);
     return `${formatted} (${suffix})`;
   }
-  return sub.next_charge > 0 ? `Ledger ${sub.next_charge}` : "Unavailable";
+  return "Unavailable";
 }
 
 function formatUtcOffset(date: Date): string {

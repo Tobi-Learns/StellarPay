@@ -13,6 +13,7 @@ import * as rpc from "@stellar/stellar-sdk/rpc";
 import { db } from "@/lib/db";
 import { getSubscription } from "@/lib/stellar";
 import { deliverWebhook } from "@/lib/webhooks";
+import { computeCatchUp, toUnixSeconds, type Interval, type IntervalUnit } from "@/lib/billing-schedule";
 
 const RPC_URL = "https://soroban-testnet.stellar.org";
 const CONTRACT_ID = process.env.NEXT_PUBLIC_STELLARPAY_CONTRACT_ID!;
@@ -37,7 +38,12 @@ interface ChargeResult {
   result: string;
 }
 
-async function buildAndSignCharge(adminKp: Keypair, subId: bigint): Promise<string> {
+async function buildAndSignCharge(
+  adminKp: Keypair,
+  subId: bigint,
+  periods: number,
+  newNextChargeAt: number
+): Promise<string> {
   const contract = new Contract(CONTRACT_ID);
   const account = await server.getAccount(adminKp.publicKey());
 
@@ -49,7 +55,9 @@ async function buildAndSignCharge(adminKp: Keypair, subId: bigint): Promise<stri
       contract.call(
         "charge",
         new Address(adminKp.publicKey()).toScVal(),
-        nativeToScVal(subId, { type: "u64" })
+        nativeToScVal(subId, { type: "u64" }),
+        nativeToScVal(periods, { type: "u32" }),
+        nativeToScVal(BigInt(newNextChargeAt), { type: "u64" })
       )
     )
     .setTimeout(30)
@@ -78,7 +86,11 @@ async function submitAndWait(signedXdr: string): Promise<string> {
   throw new Error("Transaction timeout");
 }
 
-async function simulateSacView(source: string, method: string, ...args: xdr.ScVal[]): Promise<bigint> {
+async function simulateSacView(
+  source: string,
+  method: string,
+  ...args: xdr.ScVal[]
+): Promise<bigint> {
   const contract = new Contract(SAC_ID);
   const account = await server.getAccount(source);
   const tx = new TransactionBuilder(account, {
@@ -96,15 +108,17 @@ async function simulateSacView(source: string, method: string, ...args: xdr.ScVa
   return scValToNative(sim.result.retval) as bigint;
 }
 
-// Charging with insufficient allowance/balance flips the subscription to
-// PastDue on-chain, which is unrecoverable (charge asserts status == Active).
-// So the customer's ability to cover the amount must be confirmed BEFORE
-// submitting — a doomed charge must never reach the contract.
-async function payerCanCover(
+// How many whole periods (of `amount` each) the subscriber can currently cover,
+// bounded by both their SAC allowance and their balance. Charging with
+// insufficient funds flips the subscription to PastDue on-chain, which is
+// terminal — so we compute what's affordable BEFORE submitting and never send a
+// doomed charge.
+async function affordablePeriods(
   adminAddress: string,
   subscriber: string,
   amount: bigint
-): Promise<boolean> {
+): Promise<number> {
+  if (amount <= BigInt(0)) return 0;
   const allowance = await simulateSacView(
     adminAddress,
     "allowance",
@@ -116,7 +130,8 @@ async function payerCanCover(
     "balance",
     new Address(subscriber).toScVal()
   );
-  return allowance >= amount && balance >= amount;
+  const coverable = (allowance < balance ? allowance : balance) / amount;
+  return Number(coverable);
 }
 
 export async function runChargePass(mode: ChargeMode) {
@@ -124,7 +139,6 @@ export async function runChargePass(mode: ChargeMode) {
   if (!adminSecret) throw new Error("No admin secret");
 
   const adminKp = Keypair.fromSecret(adminSecret);
-  const { sequence: currentLedger } = await server.getLatestLedger();
   const now = new Date();
 
   const subs = await db.subscription.findMany({
@@ -132,6 +146,7 @@ export async function runChargePass(mode: ChargeMode) {
       mode === "retry"
         ? { status: "Active", nextRetryAt: { lte: now } }
         : { status: "Active" },
+    include: { plan: true },
   });
 
   const results: ChargeResult[] = [];
@@ -157,22 +172,29 @@ export async function runChargePass(mode: ChargeMode) {
         continue;
       }
 
-      if (currentLedger < onChain.next_charge) {
+      const interval: Interval = {
+        unit: sub.plan.intervalUnit as IntervalUnit,
+        count: sub.plan.intervalCount,
+      };
+
+      // How many periods have come due since the last charge (arrears aware).
+      const owed = computeCatchUp(sub.anchorAt, interval, sub.periodsCharged, now);
+      if (owed.periods === 0) {
         if (sub.retryCount > 0 || sub.nextRetryAt) {
           await db.subscription.update({
             where: { onChainId: sub.onChainId },
             data: { retryCount: 0, nextRetryAt: null },
           });
         }
-        results.push({ id: sub.onChainId, result: `not due (next: ${onChain.next_charge}, now: ${currentLedger})` });
+        results.push({ id: sub.onChainId, result: `not due (next: ${onChain.next_charge_at})` });
         continue;
       }
 
-      // Charge is due — confirm the customer can cover it before touching the chain
+      // Confirm what the subscriber can cover, then charge that many (partial catch-up).
       const amount = BigInt(sub.amount);
-      const covered = await payerCanCover(adminKp.publicKey(), sub.subscriber, amount);
+      const affordable = await affordablePeriods(adminKp.publicKey(), sub.subscriber, amount);
 
-      if (!covered) {
+      if (affordable === 0) {
         if (sub.retryCount >= MAX_RETRIES) {
           // Confirmed customer-side insufficient funds/allowance after both
           // retries — cancel platform-side. The contract's cancel() needs the
@@ -210,17 +232,33 @@ export async function runChargePass(mode: ChargeMode) {
         continue;
       }
 
-      const signedXdr = await buildAndSignCharge(adminKp, BigInt(sub.onChainId));
+      // Charge the affordable number of owed periods (capped catch-up).
+      const periodsToCharge = Math.min(owed.periods, affordable);
+      const settled = computeCatchUp(sub.anchorAt, interval, sub.periodsCharged, now, periodsToCharge);
+      const newNextChargeAt = toUnixSeconds(settled.newNextChargeAt);
+
+      const signedXdr = await buildAndSignCharge(
+        adminKp,
+        BigInt(sub.onChainId),
+        periodsToCharge,
+        newNextChargeAt
+      );
       const txHash = await submitAndWait(signedXdr);
 
       // Re-read on-chain state — contract sets PastDue without panicking,
       // so the tx succeeds either way and we must check the outcome here.
       const after = await getSubscription(BigInt(sub.onChainId));
-      const eventType = after.status === "PastDue" ? "subscription.past_due" : "subscription.charged";
+      const charged = after.status === "Active";
+      const eventType = charged ? "subscription.charged" : "subscription.past_due";
 
       await db.subscription.update({
         where: { onChainId: sub.onChainId },
-        data: { status: after.status, retryCount: 0, nextRetryAt: null },
+        data: {
+          status: after.status,
+          periodsCharged: charged ? settled.newPeriodsCharged : sub.periodsCharged,
+          retryCount: 0,
+          nextRetryAt: null,
+        },
       });
 
       await db.event.upsert({
@@ -230,13 +268,19 @@ export async function runChargePass(mode: ChargeMode) {
           type: eventType,
           txHash,
           subscriptionId: sub.id,
-          data: { subId: sub.onChainId, triggeredBy: "cron", status: after.status },
+          data: { subId: sub.onChainId, triggeredBy: "cron", status: after.status, periods: periodsToCharge },
         },
       });
 
-      deliverWebhook(sub.merchant, eventType, { subId: sub.onChainId, txHash, status: after.status }).catch(() => {});
+      deliverWebhook(sub.merchant, eventType, {
+        subId: sub.onChainId,
+        txHash,
+        status: after.status,
+        periods: periodsToCharge,
+      }).catch(() => {});
 
-      results.push({ id: sub.onChainId, result: `${after.status.toLowerCase()} — ${txHash}` });
+      const partial = periodsToCharge < owed.periods ? ` (partial ${periodsToCharge}/${owed.periods})` : periodsToCharge > 1 ? ` (${periodsToCharge} periods)` : "";
+      results.push({ id: sub.onChainId, result: `${after.status.toLowerCase()}${partial} — ${txHash}` });
     } catch (err) {
       // System-side failure (RPC, simulation, submission, timeout) — reschedule
       // but never increment retryCount: only confirmed insufficient funds may
@@ -256,5 +300,5 @@ export async function runChargePass(mode: ChargeMode) {
     }
   }
 
-  return { ran: now.toISOString(), mode, currentLedger, results };
+  return { ran: now.toISOString(), mode, results };
 }

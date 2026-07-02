@@ -55,14 +55,18 @@ impl StellarPayContract {
     }
 
     /// Create a recurring billing plan. Returns the plan ID.
+    /// `min_interval_secs` is the on-chain cadence floor (see `Plan`).
     pub fn create_plan(
         env: Env,
         merchant: Address,
         asset: Address,
         amount: i128,
-        interval: u32,
+        min_interval_secs: u64,
     ) -> u64 {
         merchant.require_auth();
+
+        assert!(min_interval_secs > 0, "interval must be positive");
+        assert!(amount > 0, "amount must be positive");
 
         let plan_id: u64 = env.storage().instance().get(&DataKey::PlanCount).unwrap();
 
@@ -71,7 +75,7 @@ impl StellarPayContract {
             merchant: merchant.clone(),
             asset,
             amount,
-            interval,
+            min_interval_secs,
             active: true,
         };
 
@@ -89,8 +93,11 @@ impl StellarPayContract {
     }
 
     /// Subscribe to a plan. Assumes subscriber already called SAC approve(this_contract, cap).
-    /// Runs the first charge immediately. Returns the subscription ID.
-    pub fn subscribe(env: Env, subscriber: Address, plan_id: u64) -> u64 {
+    /// Runs the first charge (one period) immediately and sets the next due date to
+    /// `next_charge_at`, a UTC unix timestamp computed by the backend's calendar math.
+    /// The contract enforces `next_charge_at >= now + min_interval_secs` so the first
+    /// advance can't be shorter than the cadence floor. Returns the subscription ID.
+    pub fn subscribe(env: Env, subscriber: Address, plan_id: u64, next_charge_at: u64) -> u64 {
         subscriber.require_auth();
 
         let plan: Plan = env
@@ -100,20 +107,25 @@ impl StellarPayContract {
             .expect("plan not found");
         assert!(plan.active, "plan not active");
 
-        let sub_id: u64 = env.storage().instance().get(&DataKey::SubCount).unwrap();
-        let now = env.ledger().sequence();
+        let now = env.ledger().timestamp();
+        assert!(
+            next_charge_at >= now + plan.min_interval_secs,
+            "next_charge_at below cadence floor"
+        );
 
-        // next_charge starts at now; _charge will advance it by interval
+        let sub_id: u64 = env.storage().instance().get(&DataKey::SubCount).unwrap();
+
         let mut sub = Subscription {
             id: sub_id,
             plan_id,
             subscriber: subscriber.clone(),
             status: Status::Active,
-            next_charge: now,
+            next_charge_at: now,
             created_at: now,
         };
 
-        Self::_charge(&env, &plan, &mut sub);
+        // First charge: one period now, schedule advances to the backend-computed date.
+        Self::_pull(&env, &plan, &mut sub, plan.amount, next_charge_at);
 
         env.storage()
             .persistent()
@@ -128,10 +140,21 @@ impl StellarPayContract {
         sub_id
     }
 
-    /// Pull one billing cycle. Caller must be the plan merchant or the admin.
-    /// Subscriber does NOT sign — funds are pulled via the pre-approved SAC allowance.
-    /// On transfer failure the subscription moves to PastDue instead of panicking.
-    pub fn charge(env: Env, invoker: Address, sub_id: u64) {
+    /// Pull `periods` billing cycles in one transfer and advance the schedule to
+    /// `new_next_charge_at` (a UTC unix timestamp from the backend's calendar math).
+    /// Caller must be the plan merchant or the admin; the subscriber does NOT sign —
+    /// funds are pulled via the pre-approved SAC allowance. On transfer failure the
+    /// subscription moves to PastDue instead of panicking.
+    ///
+    /// Safety envelope (backend owns exact dates, contract owns the bounds):
+    /// - `periods >= 1` and the charge must be due (`now >= next_charge_at`).
+    /// - Upper bound: `periods` cannot exceed the number of periods that could have
+    ///   elapsed since `next_charge_at` at the `min_interval_secs` floor — the contract
+    ///   can't be told to bill the future.
+    /// - Lower bound: `new_next_charge_at >= next_charge_at + periods * min_interval_secs`
+    ///   — the money pulled (`amount * periods`) is chained to how far the schedule
+    ///   advances, so average extraction can never exceed one period per interval.
+    pub fn charge(env: Env, invoker: Address, sub_id: u64, periods: u32, new_next_charge_at: u64) {
         invoker.require_auth();
 
         let mut sub: Subscription = env
@@ -146,11 +169,10 @@ impl StellarPayContract {
             .expect("plan not found");
 
         assert!(sub.status == Status::Active, "subscription not active");
-        assert!(
-            env.ledger().sequence() >= sub.next_charge,
-            "charge not due yet"
-        );
+        assert!(periods >= 1, "periods must be >= 1");
 
+        let now = env.ledger().timestamp();
+        assert!(now >= sub.next_charge_at, "charge not due yet");
 
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         assert!(
@@ -158,7 +180,19 @@ impl StellarPayContract {
             "not authorized"
         );
 
-        Self::_charge(&env, &plan, &mut sub);
+        // Upper bound: can't bill more periods than could have elapsed at the floor rate.
+        let max_periods = (now - sub.next_charge_at) / plan.min_interval_secs + 1;
+        assert!(periods as u64 <= max_periods, "too many periods for elapsed time");
+
+        // Lower bound: schedule must advance at least one floor-interval per period charged.
+        let min_advance = sub.next_charge_at + periods as u64 * plan.min_interval_secs;
+        assert!(
+            new_next_charge_at >= min_advance,
+            "advance below cadence floor"
+        );
+
+        let total = plan.amount * periods as i128;
+        Self::_pull(&env, &plan, &mut sub, total, new_next_charge_at);
 
         env.storage()
             .persistent()
@@ -203,12 +237,15 @@ impl StellarPayContract {
 
     // ── internal ──────────────────────────────────────────────────────────────
 
-    fn _charge(env: &Env, plan: &Plan, sub: &mut Subscription) {
+    /// Pull `total_amount` (fee split included) from the subscriber via the SAC
+    /// allowance. On success, advance the schedule to `new_next_charge_at`. On
+    /// failure (insufficient allowance/balance), set PastDue without panicking.
+    fn _pull(env: &Env, plan: &Plan, sub: &mut Subscription, total_amount: i128, new_next_charge_at: u64) {
         let fee_bps: u32 = env.storage().instance().get(&DataKey::FeeBps).unwrap();
         let platform: Address = env.storage().instance().get(&DataKey::Platform).unwrap();
 
-        let fee = plan.amount * fee_bps as i128 / 10000;
-        let merchant_amount = plan.amount - fee;
+        let fee = total_amount * fee_bps as i128 / 10000;
+        let merchant_amount = total_amount - fee;
 
         let token = token::Client::new(env, &plan.asset);
 
@@ -228,9 +265,9 @@ impl StellarPayContract {
                         &fee,
                     );
                 }
-                sub.next_charge += plan.interval;
+                sub.next_charge_at = new_next_charge_at;
                 env.events()
-                    .publish((symbol_short!("charge"),), (sub.id, plan.amount));
+                    .publish((symbol_short!("charge"),), (sub.id, total_amount));
             }
             Err(_) => {
                 sub.status = Status::PastDue;

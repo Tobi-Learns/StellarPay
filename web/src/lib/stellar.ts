@@ -30,7 +30,7 @@ export interface Plan {
   merchant: string;
   asset: string;
   amount: bigint;
-  interval: number;
+  min_interval_secs: number; // on-chain cadence floor (seconds)
   active: boolean;
 }
 
@@ -39,8 +39,8 @@ export interface Subscription {
   plan_id: bigint;
   subscriber: string;
   status: "Active" | "PastDue" | "Canceled";
-  next_charge: number;
-  created_at: number;
+  next_charge_at: number; // unix seconds
+  created_at: number;     // unix seconds
 }
 
 // ── core helpers ──────────────────────────────────────────────────────────────
@@ -70,6 +70,28 @@ export async function buildTxXdr(
   return rpc.assembleTransaction(tx, simResult).build().toXDR();
 }
 
+/** Best-effort extraction of the RPC rejection reason (e.g. txBadSeq, txInsufficientFee). */
+function describeSendError(sendResult: rpc.Api.SendTransactionResponse): string {
+  try {
+    const code = sendResult.errorResult?.result().switch().name;
+    if (code) return code;
+  } catch {
+    /* errorResult not present or not decodable */
+  }
+  return sendResult.status;
+}
+
+/** Best-effort extraction of an on-chain failure reason from a FAILED getTransaction result. */
+function describeFailure(status: rpc.Api.GetFailedTransactionResponse): string {
+  try {
+    const code = status.resultXdr?.result().switch().name;
+    if (code) return code;
+  } catch {
+    /* resultXdr not present or not decodable */
+  }
+  return "unknown";
+}
+
 /**
  * Submit a signed XDR, wait for confirmation, and return the contract's return value.
  * Useful for calls that return a value (e.g. subscribe → sub ID).
@@ -79,7 +101,9 @@ export async function submitAndWaitWithResult(
 ): Promise<{ hash: string; returnValue: unknown }> {
   const tx = TransactionBuilder.fromXDR(signedXdr, PASSPHRASE);
   const sendResult = await server.sendTransaction(tx);
-  if (sendResult.status === "ERROR") throw new Error("Transaction submission failed");
+  if (sendResult.status === "ERROR") {
+    throw new Error(`Transaction submission failed: ${describeSendError(sendResult)}`);
+  }
 
   for (let i = 0; i < 30; i++) {
     await sleep(1000);
@@ -89,7 +113,7 @@ export async function submitAndWaitWithResult(
       return { hash: sendResult.hash, returnValue };
     }
     if (status.status === rpc.Api.GetTransactionStatus.FAILED) {
-      throw new Error("Transaction failed on-chain");
+      throw new Error(`Transaction failed on-chain (${sendResult.hash}): ${describeFailure(status)}`);
     }
   }
   throw new Error("Transaction confirmation timeout");
@@ -101,7 +125,7 @@ export async function submitAndWait(signedXdr: string): Promise<string> {
   const sendResult = await server.sendTransaction(tx);
 
   if (sendResult.status === "ERROR") {
-    throw new Error("Transaction submission failed");
+    throw new Error(`Transaction submission failed: ${describeSendError(sendResult)}`);
   }
 
   // Poll until confirmed
@@ -112,7 +136,7 @@ export async function submitAndWait(signedXdr: string): Promise<string> {
       return sendResult.hash;
     }
     if (status.status === rpc.Api.GetTransactionStatus.FAILED) {
-      throw new Error("Transaction failed on-chain");
+      throw new Error(`Transaction failed on-chain (${sendResult.hash}): ${describeFailure(status)}`);
     }
   }
   throw new Error("Transaction confirmation timeout");
@@ -169,7 +193,7 @@ export function buildPayXdr(
 export function buildCreatePlanXdr(
   merchant: string,
   amount: bigint,
-  interval: number
+  minIntervalSecs: number
 ): Promise<string> {
   return buildTxXdr(
     merchant,
@@ -178,35 +202,41 @@ export function buildCreatePlanXdr(
       new Address(merchant).toScVal(),
       new Address(TEST_USDC).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
-      nativeToScVal(interval, { type: "u32" })
+      nativeToScVal(BigInt(minIntervalSecs), { type: "u64" })
     )
   );
 }
 
 export function buildSubscribeXdr(
   subscriber: string,
-  planId: bigint
+  planId: bigint,
+  nextChargeAt: number
 ): Promise<string> {
   return buildTxXdr(
     subscriber,
     stellarPay.call(
       "subscribe",
       new Address(subscriber).toScVal(),
-      nativeToScVal(planId, { type: "u64" })
+      nativeToScVal(planId, { type: "u64" }),
+      nativeToScVal(BigInt(nextChargeAt), { type: "u64" })
     )
   );
 }
 
 export function buildChargeXdr(
   invoker: string,
-  subId: bigint
+  subId: bigint,
+  periods: number,
+  newNextChargeAt: number
 ): Promise<string> {
   return buildTxXdr(
     invoker,
     stellarPay.call(
       "charge",
       new Address(invoker).toScVal(),
-      nativeToScVal(subId, { type: "u64" })
+      nativeToScVal(subId, { type: "u64" }),
+      nativeToScVal(periods, { type: "u32" }),
+      nativeToScVal(BigInt(newNextChargeAt), { type: "u64" })
     )
   );
 }
@@ -242,7 +272,8 @@ export async function getPlan(planId: bigint): Promise<Plan> {
   if (rpc.Api.isSimulationError(sim) || !("result" in sim) || !sim.result) {
     throw new Error("Failed to fetch plan");
   }
-  return scValToNative(sim.result.retval) as Plan;
+  const plan = scValToNative(sim.result.retval) as Plan & { min_interval_secs: bigint | number };
+  return { ...plan, min_interval_secs: Number(plan.min_interval_secs) };
 }
 
 export async function getSubscription(subId: bigint): Promise<Subscription> {
@@ -260,10 +291,16 @@ export async function getSubscription(subId: bigint): Promise<Subscription> {
   if (rpc.Api.isSimulationError(sim) || !("result" in sim) || !sim.result) {
     throw new Error("Failed to fetch subscription");
   }
-  const subscription = scValToNative(sim.result.retval) as Subscription & { status: unknown };
+  const subscription = scValToNative(sim.result.retval) as Subscription & {
+    status: unknown;
+    next_charge_at: bigint | number;
+    created_at: bigint | number;
+  };
   return {
     ...subscription,
     status: normalizeStatus(subscription.status),
+    next_charge_at: Number(subscription.next_charge_at),
+    created_at: Number(subscription.created_at),
   };
 }
 

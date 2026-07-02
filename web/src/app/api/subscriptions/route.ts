@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { onChainId, planOnChainId, subscriber, merchant, amount, payerName, payerEmail } = body;
+  const { onChainId, planOnChainId, subscriber, merchant, amount, payerName, payerEmail, anchorAt } = body;
 
   if (!onChainId || !planOnChainId || !subscriber || !merchant || !amount) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -27,7 +27,17 @@ export async function POST(req: NextRequest) {
   const sub = await db.subscription.upsert({
     where: { onChainId },
     update: {},
-    create: { onChainId, planOnChainId, subscriber, merchant, amount, payerName, payerEmail },
+    create: {
+      onChainId,
+      planOnChainId,
+      subscriber,
+      merchant,
+      amount,
+      payerName,
+      payerEmail,
+      // periodsCharged defaults to 1 (the immediate first charge at subscribe).
+      ...(anchorAt ? { anchorAt: new Date(anchorAt) } : {}),
+    },
   });
   return NextResponse.json(sub, { status: 201 });
 }

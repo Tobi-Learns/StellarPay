@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "scripts": {
     "dev": "next dev -p 3001",
-    "build": "npm --prefix ../sdk install && npm --prefix ../sdk run build && next build",
+    "build": "npm --prefix ../sdk install --include=dev && npm --prefix ../sdk run build && next build",
     "start": "next start -p 3001"
   },
   "dependencies": {

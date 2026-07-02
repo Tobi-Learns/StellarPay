@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StellarPayButton } from "@stellarpay/sdk/react";
 import { TESTNET, parseUsdc } from "@stellarpay/sdk";
+import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -19,9 +20,6 @@ export default function EmbeddedCheckoutPage() {
   const [txHash, setTxHash] = useState("");
   const [loadError, setLoadError] = useState("");
   const [payError, setPayError] = useState("");
-  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
-  const [payerName, setPayerName] = useState("Jerry Rig");
-  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   useEffect(() => {
     fetch("/api/checkout", {
@@ -150,20 +148,7 @@ export default function EmbeddedCheckoutPage() {
                     Click below to connect your Freighter wallet and complete the payment. No extra steps — the button handles everything.
                   </p>
 
-                  <input
-                    type="text"
-                    placeholder="Full name"
-                    value={payerName}
-                    onChange={(e) => setPayerName(e.target.value)}
-                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email address"
-                    value={payerEmail}
-                    onChange={(e) => setPayerEmail(e.target.value)}
-                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-                  />
+                  <DemoCustomerCard />
 
                   {/* payerName/payerEmail props (2k): the button records the
                       payment.settled event with the platform itself — no
@@ -173,8 +158,8 @@ export default function EmbeddedCheckoutPage() {
                     merchant={MERCHANT}
                     amount={AMOUNT}
                     linkId={linkNumericId}
-                    payerName={payerName.trim() || undefined}
-                    payerEmail={payerEmail.trim() || undefined}
+                    payerName={DEMO_CUSTOMER.name}
+                    payerEmail={DEMO_CUSTOMER.email}
                     onSuccess={(hash) => {
                       setTxHash(hash);
                       setPageState("success");

@@ -12,6 +12,7 @@ import {
   type Interval,
 } from "@stellarpay/sdk";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
+import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS!;
@@ -37,9 +38,6 @@ export default function SubscribeEmbeddedPage() {
   const [step, setStep] = useState<Step>("idle");
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
-  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
-  const [payerName, setPayerName] = useState("Jerry Rig");
-  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   async function handleSubscribe() {
     setStep("connecting");
@@ -127,8 +125,8 @@ export default function SubscribeEmbeddedPage() {
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
           anchorAt: anchor.toISOString(),
-          payerName: payerName.trim() || undefined,
-          payerEmail: payerEmail.trim() || undefined,
+          payerName: DEMO_CUSTOMER.name,
+          payerEmail: DEMO_CUSTOMER.email,
         }),
       });
       if (!regRes.ok) {
@@ -236,23 +234,8 @@ export default function SubscribeEmbeddedPage() {
             Authorize subscription
           </p>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-            <input
-              type="text"
-              placeholder="Full name"
-              value={payerName}
-              onChange={(e) => setPayerName(e.target.value)}
-              disabled={isActive}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={payerEmail}
-              onChange={(e) => setPayerEmail(e.target.value)}
-              disabled={isActive}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-            />
+          <div style={{ marginBottom: 24 }}>
+            <DemoCustomerCard />
           </div>
 
           {/* Steps */}

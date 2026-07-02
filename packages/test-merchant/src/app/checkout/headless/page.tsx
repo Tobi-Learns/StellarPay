@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
+import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -37,9 +38,6 @@ export default function HeadlessCheckoutPage() {
   const [payer, setPayer] = useState("");
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
-  // Demo customer — editable, pre-filled so the merchant dashboard shows identity.
-  const [payerName, setPayerName] = useState("Jerry Rig");
-  const [payerEmail, setPayerEmail] = useState("jerryrig@gmail.com");
 
   const stepLabel = useMemo(() => {
     switch (step) {
@@ -142,8 +140,8 @@ export default function HeadlessCheckoutPage() {
         merchant: MERCHANT_ADDRESS,
         amount: AMOUNT_STR,
         linkId: link.numericId,
-        payerName: payerName.trim() || undefined,
-        payerEmail: payerEmail.trim() || undefined,
+        payerName: DEMO_CUSTOMER.name,
+        payerEmail: DEMO_CUSTOMER.email,
         payerWallet: access.address,
       }).catch(() => {});
       setTxHash(hash);
@@ -233,22 +231,7 @@ export default function HeadlessCheckoutPage() {
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <input
-              type="text"
-              placeholder="Full name"
-              value={payerName}
-              onChange={(e) => setPayerName(e.target.value)}
-              disabled={isWorking}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-            />
-            <input
-              type="email"
-              placeholder="Email address"
-              value={payerEmail}
-              onChange={(e) => setPayerEmail(e.target.value)}
-              disabled={isWorking}
-              style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid #e7e5e4", fontSize: 14, boxSizing: "border-box" }}
-            />
+            <DemoCustomerCard />
 
             <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fafaf9" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>

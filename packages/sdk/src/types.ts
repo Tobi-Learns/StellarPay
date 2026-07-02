@@ -25,7 +25,7 @@ export interface Plan {
   merchant: string;
   asset: string;
   amount: bigint;
-  interval: number;
+  min_interval_secs: number; // on-chain cadence floor (seconds)
   active: boolean;
 }
 
@@ -34,8 +34,8 @@ export interface Subscription {
   plan_id: bigint;
   subscriber: string;
   status: "Active" | "PastDue" | "Canceled";
-  next_charge: number;
-  created_at: number;
+  next_charge_at: number; // unix seconds
+  created_at: number;     // unix seconds
 }
 
 // ── API record types (mirrors Prisma schema) ──────────────────────────────────
@@ -55,8 +55,10 @@ export interface PlanRecord {
   onChainId: string;
   merchant: string;
   amount: string;
-  interval: number;
+  interval: number;         // min_interval_secs
   intervalLabel: string;
+  intervalUnit: string;
+  intervalCount: number;
   createdAt: string;
 }
 
@@ -70,6 +72,8 @@ export interface SubscriptionRecord {
   payerName?: string;
   payerEmail?: string;
   status: string;
+  anchorAt?: string;
+  periodsCharged?: number;
   createdAt: string;
   updatedAt: string;
 }

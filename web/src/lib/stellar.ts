@@ -30,7 +30,7 @@ export interface Plan {
   merchant: string;
   asset: string;
   amount: bigint;
-  interval: number;
+  min_interval_secs: number; // on-chain cadence floor (seconds)
   active: boolean;
 }
 
@@ -39,8 +39,8 @@ export interface Subscription {
   plan_id: bigint;
   subscriber: string;
   status: "Active" | "PastDue" | "Canceled";
-  next_charge: number;
-  created_at: number;
+  next_charge_at: number; // unix seconds
+  created_at: number;     // unix seconds
 }
 
 // ── core helpers ──────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ export function buildPayXdr(
 export function buildCreatePlanXdr(
   merchant: string,
   amount: bigint,
-  interval: number
+  minIntervalSecs: number
 ): Promise<string> {
   return buildTxXdr(
     merchant,
@@ -178,35 +178,41 @@ export function buildCreatePlanXdr(
       new Address(merchant).toScVal(),
       new Address(TEST_USDC).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
-      nativeToScVal(interval, { type: "u32" })
+      nativeToScVal(BigInt(minIntervalSecs), { type: "u64" })
     )
   );
 }
 
 export function buildSubscribeXdr(
   subscriber: string,
-  planId: bigint
+  planId: bigint,
+  nextChargeAt: number
 ): Promise<string> {
   return buildTxXdr(
     subscriber,
     stellarPay.call(
       "subscribe",
       new Address(subscriber).toScVal(),
-      nativeToScVal(planId, { type: "u64" })
+      nativeToScVal(planId, { type: "u64" }),
+      nativeToScVal(BigInt(nextChargeAt), { type: "u64" })
     )
   );
 }
 
 export function buildChargeXdr(
   invoker: string,
-  subId: bigint
+  subId: bigint,
+  periods: number,
+  newNextChargeAt: number
 ): Promise<string> {
   return buildTxXdr(
     invoker,
     stellarPay.call(
       "charge",
       new Address(invoker).toScVal(),
-      nativeToScVal(subId, { type: "u64" })
+      nativeToScVal(subId, { type: "u64" }),
+      nativeToScVal(periods, { type: "u32" }),
+      nativeToScVal(BigInt(newNextChargeAt), { type: "u64" })
     )
   );
 }
@@ -242,7 +248,8 @@ export async function getPlan(planId: bigint): Promise<Plan> {
   if (rpc.Api.isSimulationError(sim) || !("result" in sim) || !sim.result) {
     throw new Error("Failed to fetch plan");
   }
-  return scValToNative(sim.result.retval) as Plan;
+  const plan = scValToNative(sim.result.retval) as Plan & { min_interval_secs: bigint | number };
+  return { ...plan, min_interval_secs: Number(plan.min_interval_secs) };
 }
 
 export async function getSubscription(subId: bigint): Promise<Subscription> {
@@ -260,10 +267,16 @@ export async function getSubscription(subId: bigint): Promise<Subscription> {
   if (rpc.Api.isSimulationError(sim) || !("result" in sim) || !sim.result) {
     throw new Error("Failed to fetch subscription");
   }
-  const subscription = scValToNative(sim.result.retval) as Subscription & { status: unknown };
+  const subscription = scValToNative(sim.result.retval) as Subscription & {
+    status: unknown;
+    next_charge_at: bigint | number;
+    created_at: bigint | number;
+  };
   return {
     ...subscription,
     status: normalizeStatus(subscription.status),
+    next_charge_at: Number(subscription.next_charge_at),
+    created_at: Number(subscription.created_at),
   };
 }
 

@@ -141,11 +141,8 @@ export interface CatchUp {
 /**
  * Given how many charges have been made so far (`periodsCharged`, which is 1
  * immediately after subscribe), determine how many periods are due at `now` and
- * where the schedule lands after charging them.
- *
- * `maxPeriods` caps the result for partial catch-up when the subscriber can't
- * cover the full arrears — pass the largest affordable period count and the
- * returned `newNextChargeAt` advances only that far.
+ * where the schedule lands after charging them. `maxPeriods` caps the result for
+ * partial catch-up when the subscriber can't cover the full arrears.
  *
  * Invariant: the on-chain next_charge_at equals billingDateAfter(anchor,
  * interval, periodsCharged), so the first uncharged boundary is index

@@ -3,12 +3,20 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
-import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
+import {
+  StellarPayClient,
+  TESTNET,
+  parseUsdc,
+  minIntervalSeconds,
+  firstNextChargeAt,
+  toUnixSeconds,
+  type Interval,
+} from "@stellarpay/sdk";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
-const INTERVAL = 50;
-const INTERVAL_LABEL = "Monthly (demo: 4 min)";
+const INTERVAL: Interval = { unit: "minute", count: 5 };
+const INTERVAL_LABEL = "Demo (every 5 minutes)";
 
 const AMOUNT = parseUsdc("3.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -101,7 +109,7 @@ export default function HeadlessSubscribePage() {
       throw new Error("No plan found. The merchant needs to create the Monthly Coffee Club plan first.");
     }
 
-    const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, INTERVAL);
+    const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, minIntervalSeconds(INTERVAL));
     const signedCreateXdr = await sign(createXdr, address);
     const { returnValue } = await c.submitAndWaitWithResult(signedCreateXdr);
     const createdPlanId = returnValue as bigint;
@@ -113,8 +121,10 @@ export default function HeadlessSubscribePage() {
         onChainId: String(createdPlanId),
         merchant: MERCHANT_ADDRESS,
         amount: AMOUNT_STR,
-        interval: INTERVAL,
+        interval: minIntervalSeconds(INTERVAL),
         intervalLabel: INTERVAL_LABEL,
+        intervalUnit: INTERVAL.unit,
+        intervalCount: INTERVAL.count,
       }),
     });
 
@@ -164,7 +174,9 @@ export default function HeadlessSubscribePage() {
       await c.submitAndWait(signedApproveXdr);
 
       setStep("subscribing");
-      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId);
+      const anchor = new Date();
+      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
+      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt);
       const signedSubscribeXdr = await sign(subscribeXdr, address);
       const { returnValue } = await c.submitAndWaitWithResult(signedSubscribeXdr);
       const createdSubId = returnValue as bigint;
@@ -180,6 +192,7 @@ export default function HeadlessSubscribePage() {
           subscriber: address,
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
+          anchorAt: anchor.toISOString(),
         }),
       });
 

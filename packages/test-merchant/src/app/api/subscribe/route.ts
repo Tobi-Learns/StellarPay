@@ -39,6 +39,7 @@ export async function PATCH(req: NextRequest) {
       subscriber: string;
       merchant: string;
       amount: string;
+      anchorAt?: string;
     };
 
     const res = await fetch(`${API_BASE}/api/subscriptions`, {
@@ -64,12 +65,14 @@ export async function PATCH(req: NextRequest) {
 // merchant = subscriber address (demo: subscriber is their own merchant).
 export async function PUT(req: NextRequest) {
   try {
-    const { onChainId, merchant, amount, interval, intervalLabel } = await req.json() as {
+    const { onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount } = await req.json() as {
       onChainId: string;
       merchant: string;
       amount: string;
       interval: number;
       intervalLabel: string;
+      intervalUnit: string;
+      intervalCount: number;
     };
 
     const res = await fetch(`${API_BASE}/api/plans`, {
@@ -78,7 +81,7 @@ export async function PUT(req: NextRequest) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${API_KEY}`,
       },
-      body: JSON.stringify({ onChainId, merchant, amount, interval, intervalLabel }),
+      body: JSON.stringify({ onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount }),
     });
 
     if (!res.ok) {

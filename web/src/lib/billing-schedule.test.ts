@@ -83,12 +83,17 @@ test("firstNextChargeAt equals boundary 1", () => {
 
 // ── minIntervalSeconds (cadence floor) ──────────────────────────────────────
 
-test("minIntervalSeconds is a safe lower bound", () => {
-  assert.equal(minIntervalSeconds({ unit: "minute", count: 5 }), 300);
-  assert.equal(minIntervalSeconds({ unit: "day", count: 1 }), 86_400);
-  assert.equal(minIntervalSeconds({ unit: "week", count: 2 }), 1_209_600);
-  assert.equal(minIntervalSeconds({ unit: "month", count: 1 }), 28 * 86_400);
-  assert.equal(minIntervalSeconds({ unit: "year", count: 1 }), 365 * 86_400);
+test("minIntervalSeconds is a safe lower bound (shortest real minus 60s grace)", () => {
+  assert.equal(minIntervalSeconds({ unit: "minute", count: 5 }), 300 - 60);
+  assert.equal(minIntervalSeconds({ unit: "day", count: 1 }), 86_400 - 60);
+  assert.equal(minIntervalSeconds({ unit: "week", count: 2 }), 1_209_600 - 60);
+  assert.equal(minIntervalSeconds({ unit: "month", count: 1 }), 28 * 86_400 - 60);
+  assert.equal(minIntervalSeconds({ unit: "year", count: 1 }), 365 * 86_400 - 60);
+});
+
+test("grace is capped at half the period for tiny intervals", () => {
+  // 1-minute period: 60s real, grace capped at 30 → floor 30, never negative.
+  assert.equal(minIntervalSeconds({ unit: "minute", count: 1 }), 30);
 });
 
 test("floor never exceeds a real monthly period", () => {

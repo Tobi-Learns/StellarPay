@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { buildCreatePlanXdr, submitAndWaitWithResult, parseUsdc } from "@/lib/stellar";
 import { INTERVALS, savePlan } from "@/lib/plans";
+import { minIntervalSeconds } from "@/lib/billing-schedule";
 
 export default function NewPlanPage() {
   const { address, signTransaction } = useWallet();
@@ -21,12 +22,13 @@ export default function NewPlanPage() {
 
     const stroops = parseUsdc(amount);
     const interval = INTERVALS[intervalIdx];
+    const minSecs = minIntervalSeconds({ unit: interval.unit, count: interval.count });
 
     setStatus("signing");
     setErrorMsg("");
 
     try {
-      const xdr = await buildCreatePlanXdr(address, stroops, interval.value);
+      const xdr = await buildCreatePlanXdr(address, stroops, minSecs);
       const signedXdr = await signTransaction(xdr);
 
       setStatus("submitting");
@@ -38,8 +40,10 @@ export default function NewPlanPage() {
         onChainId,
         merchant: address,
         amount: stroops.toString(),
-        interval: interval.value,
+        interval: minSecs,
         intervalLabel: interval.label,
+        intervalUnit: interval.unit,
+        intervalCount: interval.count,
         createdAt: Date.now(),
       };
 
@@ -90,7 +94,7 @@ export default function NewPlanPage() {
               className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
             >
               {INTERVALS.map((iv, i) => (
-                <option key={iv.value} value={i}>{iv.label}</option>
+                <option key={iv.label} value={i}>{iv.label}</option>
               ))}
             </select>
           </div>

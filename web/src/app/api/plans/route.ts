@@ -14,16 +14,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { onChainId, merchant, amount, interval, intervalLabel } = body;
+  const { onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount } = body;
 
-  if (!onChainId || !merchant || !amount || interval == null || !intervalLabel) {
+  if (!onChainId || !merchant || !amount || interval == null || !intervalLabel || !intervalUnit || intervalCount == null) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
   const plan = await db.plan.upsert({
     where: { onChainId },
     update: {},
-    create: { onChainId, merchant, amount, interval, intervalLabel },
+    create: { onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount },
   });
   return NextResponse.json(plan, { status: 201 });
 }

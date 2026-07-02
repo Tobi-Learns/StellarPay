@@ -49,6 +49,8 @@ model Subscription {
   payerName     String?
   payerEmail    String?
   status        String   @default("Active")  // Active | PastDue | Canceled
+  retryCount    Int      @default(0)         // consecutive insufficient-funds observations (2j retry policy)
+  nextRetryAt   DateTime?                    // when the retry cron should re-attempt this charge
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   events        Event[]

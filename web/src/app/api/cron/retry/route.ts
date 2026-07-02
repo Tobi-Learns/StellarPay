@@ -5,8 +5,8 @@ import { runChargePass } from "@/lib/cron-charge";
 // kill a pass mid-charge and leave subscriptions overdue (B1).
 export const maxDuration = 300;
 
-// Regular billing pass — every 15 minutes (2i). Charges all due Active
-// subscriptions; anything mid-retry-window is left to /api/cron/retry.
+// Retry pass — every 3 minutes (2j). Only touches Active subscriptions whose
+// nextRetryAt has passed; a no-op when nothing is pending.
 export async function GET(req: NextRequest) {
   // Verify Vercel cron secret
   const auth = req.headers.get("authorization");
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    return NextResponse.json(await runChargePass("due"));
+    return NextResponse.json(await runChargePass("retry"));
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },

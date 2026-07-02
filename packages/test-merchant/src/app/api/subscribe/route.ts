@@ -40,6 +40,8 @@ export async function PATCH(req: NextRequest) {
       merchant: string;
       amount: string;
       anchorAt?: string;
+      payerName?: string;
+      payerEmail?: string;
     };
 
     const res = await fetch(`${API_BASE}/api/subscriptions`, {

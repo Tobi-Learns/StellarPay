@@ -35,6 +35,14 @@ export interface StellarPayButtonProps {
    * Requires `@stellar/freighter-api` ≥ 6 to be installed.
    */
   signXdr?: (xdr: string) => Promise<string>;
+  /**
+   * Customer name shown on the merchant dashboard. When provided (with or
+   * without payerEmail), the button records the payment.settled event with
+   * the platform after settlement — no separate event post needed.
+   */
+  payerName?: string;
+  /** Customer email, recorded alongside payerName. */
+  payerEmail?: string;
   onSuccess?: (txHash: string) => void;
   onError?: (error: Error) => void;
   /** Override the button label for each status. Merged with defaults. */
@@ -52,6 +60,8 @@ export function StellarPayButton({
   amount,
   linkId,
   signXdr,
+  payerName,
+  payerEmail,
   onSuccess,
   onError,
   labels,
@@ -118,6 +128,21 @@ export function StellarPayButton({
 
       setStatus("submitting");
       const hash = await c.submitAndWait(signedXdr);
+
+      // Record the settled payment with the platform so the merchant dashboard
+      // and webhooks carry customer identity. Fire-and-forget: recording is
+      // idempotent by txHash and must never fail an already-settled payment.
+      if (payerName || payerEmail) {
+        c.recordPaymentSettled({
+          txHash: hash,
+          merchant,
+          amount: amount.toString(),
+          linkId: linkId.toString(),
+          payerName,
+          payerEmail,
+          payerWallet: payerAddr,
+        }).catch(() => {});
+      }
 
       setStatus("success");
       onSuccess?.(hash);

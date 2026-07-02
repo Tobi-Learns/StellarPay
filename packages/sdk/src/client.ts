@@ -54,6 +54,28 @@ export class StellarPayClient {
   }
 
   /**
+   * Record a settled one-time payment in the hosted DB — creates the
+   * `payment.settled` event and triggers webhook delivery to the merchant's
+   * registered endpoints. Idempotent by txHash: recording the same payment
+   * twice is a no-op. Include `payerName`/`payerEmail` so the merchant
+   * dashboard shows who paid.
+   */
+  async recordPaymentSettled(opts: {
+    txHash: string;
+    merchant: string;
+    /** Amount in stroops, as a string. */
+    amount: string;
+    /** Numeric link ID (same value passed to buildPayXdr). */
+    linkId: string;
+    payerName?: string;
+    payerEmail?: string;
+    payerWallet?: string;
+  }): Promise<void> {
+    const { txHash, ...data } = opts;
+    await this._post("/api/events", { type: "payment.settled", txHash, data });
+  }
+
+  /**
    * Build XDR for a one-time payment. The caller signs and submits.
    * `amount` is in stroops (7 decimal places).
    */

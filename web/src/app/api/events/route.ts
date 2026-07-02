@@ -21,6 +21,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(events);
 }
 
+// CORS: the SDK's <StellarPayButton> records payment.settled directly from the
+// merchant's origin. The endpoint is unauthenticated and idempotent by txHash,
+// so cross-origin browser posts add no exposure beyond what curl already has.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 const WEBHOOK_TYPES = new Set([
   "payment.settled",
   "subscription.charged",
@@ -33,7 +46,7 @@ export async function POST(req: NextRequest) {
   const { type, txHash, paymentLinkId, subscriptionId, data } = body;
 
   if (!type || !txHash) {
-    return NextResponse.json({ error: "type and txHash required" }, { status: 400 });
+    return NextResponse.json({ error: "type and txHash required" }, { status: 400, headers: CORS_HEADERS });
   }
 
   const event = await db.event.upsert({
@@ -49,7 +62,7 @@ export async function POST(req: NextRequest) {
     }).catch(() => {});
   }
 
-  return NextResponse.json(event, { status: 201 });
+  return NextResponse.json(event, { status: 201, headers: CORS_HEADERS });
 }
 
 async function resolveMerchant({

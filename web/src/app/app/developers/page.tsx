@@ -138,7 +138,17 @@ export default function DevelopersPage() {
   return (
     <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">Developers</h1>
+        <div>
+          <h1 className="text-xl font-semibold">Developers</h1>
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors"
+          >
+            Read the docs ↗
+          </a>
+        </div>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}

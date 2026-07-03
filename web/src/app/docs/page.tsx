@@ -1,23 +1,9 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = { title: "Docs — StellarPay" };
+import { useState } from "react";
 
-const nav = [
-  { id: "quickstart", label: "Quickstart" },
-  { id: "client", label: "StellarPayClient" },
-  { id: "payments", label: "One-time payments" },
-  { id: "subscriptions", label: "Subscriptions" },
-  { id: "rest-api", label: "REST API" },
-  { id: "webhooks", label: "Webhooks" },
-  { id: "types", label: "Types" },
-];
-
-function H2({ id, children }: { id: string; children: React.ReactNode }) {
-  return (
-    <h2 id={id} className="text-lg font-semibold mt-12 mb-4 scroll-mt-8">
-      {children}
-    </h2>
-  );
+function H2({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-lg font-semibold mb-4">{children}</h2>;
 }
 
 function H3({ children }: { children: React.ReactNode }) {
@@ -33,8 +19,14 @@ function Code({ children }: { children: React.ReactNode }) {
 }
 
 function Pre({ children }: { children: string }) {
+  // Color is set inline rather than via `text-neutral-100`: that class is used
+  // nowhere else in the app, so Tailwind's content scan never emits it and the
+  // code text would fall back to the dark body color (invisible on the dark bg).
   return (
-    <pre className="text-xs bg-neutral-900 text-neutral-100 rounded-lg p-4 overflow-x-auto mb-4 leading-relaxed">
+    <pre
+      className="text-xs bg-neutral-900 rounded-lg p-4 overflow-x-auto mb-4 leading-relaxed"
+      style={{ color: "#e5e5e5" }}
+    >
       <code>{children}</code>
     </pre>
   );
@@ -42,6 +34,14 @@ function Pre({ children }: { children: string }) {
 
 function P({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-neutral-600 mb-3 leading-relaxed">{children}</p>;
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-sm text-neutral-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4 leading-relaxed">
+      {children}
+    </div>
+  );
 }
 
 function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
@@ -69,46 +69,35 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
   );
 }
 
-export default function DocsPage() {
-  return (
-    <div className="flex max-w-6xl mx-auto px-6 py-10 gap-12">
-
-      {/* Sidebar */}
-      <aside className="hidden lg:block w-44 shrink-0">
-        <div className="sticky top-8">
-          <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">On this page</p>
-          <nav className="flex flex-col gap-1">
-            {nav.map(({ id, label }) => (
-              <a key={id} href={`#${id}`} className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors py-0.5">
-                {label}
-              </a>
-            ))}
-          </nav>
-        </div>
-      </aside>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 max-w-3xl">
-        <h1 className="text-2xl font-bold mb-2">StellarPay Developer Docs</h1>
-        <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API.</P>
-
-        {/* ── Quickstart ───────────────────────────────────────────────── */}
-        <H2 id="quickstart">Quickstart</H2>
+const sections: { id: string; label: string; content: React.ReactNode }[] = [
+  {
+    id: "quickstart",
+    label: "Quickstart",
+    content: (
+      <>
+        <H2>Quickstart</H2>
         <Pre>{`npm install @stellarpay/sdk @stellar/stellar-sdk`}</Pre>
-        <Pre>{`import { StellarPayClient, TESTNET } from "@stellarpay/sdk";
+        <Pre>{`import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
 
 const client = new StellarPayClient({
-  ...TESTNET,
+  ...TESTNET,                                  // deployed testnet config
   apiBase: "https://your-stellarpay-app.vercel.app",
 });
 
-// Build a pay XDR, sign it with the user's wallet, submit
-const xdr    = await client.buildPayXdr(payer, merchant, 50_000_000n, linkId);
-const signed = await yourWallet.sign(xdr);
+// Build a pay XDR, sign it with the payer's wallet, submit on-chain
+const xdr    = await client.buildPayXdr(payer, merchant, parseUsdc("5.00"), linkId);
+const signed = await signWithWallet(xdr);      // Freighter today — see Limitations
 const hash   = await client.submitAndWait(signed);`}</Pre>
-
-        {/* ── StellarPayClient ─────────────────────────────────────────── */}
-        <H2 id="client">StellarPayClient</H2>
+        <P>Server-side calls that write to the hosted DB (creating links/plans, listing) authenticate with an API key generated from <Code>/app/developers</Code>. On-chain writes need no key — they&apos;re authorized by the wallet signature. Amounts are always <Code>bigint</Code> stroops (7 decimals); use <Code>parseUsdc</Code>/<Code>formatUsdc</Code> to convert.</P>
+      </>
+    ),
+  },
+  {
+    id: "client",
+    label: "StellarPayClient",
+    content: (
+      <>
+        <H2>StellarPayClient</H2>
         <P>All SDK functionality is accessed through a <Code>StellarPayClient</Code> instance.</P>
         <Pre>{`new StellarPayClient(config: StellarPayConfig)`}</Pre>
         <Table
@@ -119,100 +108,198 @@ const hash   = await client.submitAndWait(signed);`}</Pre>
             ["sacAddress", "string", "SAC address of the accepted asset (test USDC)"],
             ["rpcUrl", "string", "Soroban RPC endpoint"],
             ["networkPassphrase", "string", "Stellar network passphrase"],
+            ["horizonUrl?", "string", "Horizon REST base — enables automatic trustline setup"],
+            ["classicAsset?", "{ code, issuer }", "The classic asset the SAC wraps — used for trustline detection"],
           ]}
         />
-        <P>Use the <Code>TESTNET</Code> preset to fill all fields except <Code>apiBase</Code>:</P>
+        <P>Use the <Code>TESTNET</Code> preset to fill everything except <Code>apiBase</Code>:</P>
         <Pre>{`import { TESTNET } from "@stellarpay/sdk";
-// TESTNET = { contractId, sacAddress, rpcUrl, networkPassphrase }
+// TESTNET = { contractId, sacAddress, rpcUrl, horizonUrl, networkPassphrase, classicAsset }
 
 const client = new StellarPayClient({ ...TESTNET, apiBase: "https://..." });`}</Pre>
+        <P>Before any payment or subscribe call, make sure the wallet has a USDC trustline. <Code>buildTrustlineXdr(address)</Code> returns a CHANGE_TRUST XDR to sign if one is missing, or <Code>null</Code> if it already exists:</P>
+        <Pre>{`const trustlineXdr = await client.buildTrustlineXdr(payer);
+if (trustlineXdr) await client.submitAndWait(await signWithWallet(trustlineXdr));`}</Pre>
+      </>
+    ),
+  },
+  {
+    id: "payments",
+    label: "One-time payments",
+    content: (
+      <>
+        <H2>One-time payments</H2>
+        <P>Three integration patterns, simplest first. All settle the same <Code>pay</Code> contract call.</P>
 
-        {/* ── One-time payments ────────────────────────────────────────── */}
-        <H2 id="payments">One-time payments</H2>
-        <H3>Create a payment link</H3>
-        <Pre>{`const link = await client.createPaymentLink({
-  numericId:   snowflakeU64().toString(),  // canonical link id → /pay/:numericId
+        <H3>1 · Hosted link</H3>
+        <P>Create a payment link server-side, then redirect the customer to the hosted checkout at <Code>/pay/:numericId</Code>. Zero front-end payment code.</P>
+        <Pre>{`import { snowflakeU64, parseUsdc } from "@stellarpay/sdk";
+
+const link = await client.createPaymentLink({
+  numericId:   snowflakeU64().toString(),   // canonical link id → /pay/:numericId AND on-chain link_id
   merchant:    "G...",
-  amount:      "50000000",                 // stroops (5 USDC)
-  description: "Coffee",
+  amount:      parseUsdc("5.00").toString(), // stroops, as a string
+  productName: "Premium Coffee Bundle",      // required — shown across the dashboard
+  description: "1kg single-origin",          // optional
+});
+
+// Redirect the customer to:  \`\${apiBase}/pay/\${link.numericId}\``}</Pre>
+
+        <H3>2 · Embedded button</H3>
+        <P>Drop <Code>{"<StellarPayButton>"}</Code> onto your page. It connects Freighter, auto-sets up the trustline, then builds, signs, and submits the payment inline — no signing code on your side.</P>
+        <Pre>{`import { StellarPayButton } from "@stellarpay/sdk/react";
+import { TESTNET, parseUsdc } from "@stellarpay/sdk";
+
+<StellarPayButton
+  config={{ ...TESTNET, apiBase: "https://your-app.vercel.app" }}
+  merchant="G..."
+  amount={parseUsdc("5.00")}
+  linkId={BigInt(numericId)}
+  payerName="Alice"                 // when provided, the button records the
+  payerEmail="alice@example.com"    // payment.settled event for you (idempotent)
+  onSuccess={(hash) => console.log("paid", hash)}
+/>`}</Pre>
+        <P>When <Code>payerName</Code>/<Code>payerEmail</Code> are set, the button fire-and-forgets <Code>recordPaymentSettled</Code> after settlement, so the merchant dashboard and webhooks carry customer identity. <Code>signXdr</Code> is an optional escape hatch for non-Freighter wallets.</P>
+
+        <H3>3 · Headless</H3>
+        <P>Build your own UI with the raw SDK methods — full control over UX.</P>
+        <Pre>{`import { parseUsdc } from "@stellarpay/sdk";
+
+// 1. Trustline (see StellarPayClient), then build + submit the payment
+const xdr  = await client.buildPayXdr(payer, merchant, parseUsdc("5.00"), BigInt(numericId));
+const hash = await client.submitAndWait(await signWithWallet(xdr));
+
+// 2. Record the settled payment so the dashboard + webhooks see it
+await client.recordPaymentSettled({
+  txHash:      hash,
+  merchant,
+  amount:      parseUsdc("5.00").toString(),
+  linkId:      numericId,          // same value passed to buildPayXdr
+  payerName:   "Alice",
+  payerEmail:  "alice@example.com",
+  payerWallet: payer,
 });`}</Pre>
+        <P><Code>recordPaymentSettled</Code> is idempotent by <Code>txHash</Code> — recording the same payment twice is a no-op — and may be called cross-origin from the browser.</P>
+      </>
+    ),
+  },
+  {
+    id: "subscriptions",
+    label: "Subscriptions",
+    content: (
+      <>
+        <H2>Subscriptions</H2>
+        <P>Billing runs on real calendar time. A plan stores its interval as <Code>{"{ unit, count }"}</Code> (e.g. monthly); the contract only enforces a cadence floor (<Code>min_interval_secs</Code>) and the backend owns exact dates. After the subscriber approves a spending allowance once, the platform charges each cycle automatically — no further subscriber signature.</P>
 
-        <H3>Build and submit a payment</H3>
-        <Pre>{`const xdr    = await client.buildPayXdr(payerAddress, merchantAddress, 50_000_000n, BigInt(link.numericId));
-const signed = await signXdr(xdr);   // your wallet integration
-const hash   = await client.submitAndWait(signed);`}</Pre>
-
-        <H3>List payment links</H3>
-        <Pre>{`const links = await client.listPaymentLinks(merchantAddress);`}</Pre>
-
-        {/* ── Subscriptions ────────────────────────────────────────────── */}
-        <H2 id="subscriptions">Subscriptions</H2>
         <H3>Create a plan</H3>
-        <Pre>{`// 1. Create the plan on-chain
+        <Pre>{`import { minIntervalSeconds, snowflakeU64, parseUsdc } from "@stellarpay/sdk";
+
+const interval = { unit: "month", count: 1 };   // real calendar interval
+
+// 1. Create on-chain (merchant signs). The caller supplies the Snowflake plan id.
+const planId = snowflakeU64();
 const xdr = await client.buildCreatePlanXdr(
   merchantAddress,
-  10_000_000n,  // 1 USDC per cycle (stroops)
-  518_400       // interval in ledgers (~30 days; use 50 for testnet demo ~4 min)
+  parseUsdc("1.00"),               // amount per cycle (stroops)
+  minIntervalSeconds(interval),    // on-chain cadence floor, in seconds
+  planId,
 );
-const { returnValue } = await client.submitAndWaitWithResult(await signXdr(xdr));
-const planId = returnValue as bigint;
+await client.submitAndWait(await signWithWallet(xdr));
 
-// 2. Register in the hosted DB
+// 2. Register in the hosted DB (carries the real interval for date math)
 await client.registerPlan({
-  onChainId:     String(planId),
+  onChainId:     planId.toString(),
   merchant:      merchantAddress,
-  amount:        "10000000",
-  interval:      518_400,
+  amount:        parseUsdc("1.00").toString(),
+  productName:   "Pro plan",
+  interval:      minIntervalSeconds(interval),
   intervalLabel: "Monthly",
+  intervalUnit:  interval.unit,
+  intervalCount: interval.count,
 });`}</Pre>
 
         <H3>Subscribe</H3>
-        <Pre>{`const ledger = await client.getCurrentLedger();
+        <Pre>{`import { firstNextChargeAt, toUnixSeconds, snowflakeU64, parseUsdc } from "@stellarpay/sdk";
 
-// Step 1: subscriber approves SAC allowance (one-time signature)
+// Step 1: subscriber approves a SAC allowance (one-time signature).
+// The cap is in stroops; the expiry is a ledger sequence.
+const ledger = await client.getCurrentLedger();
 const approveXdr = await client.buildApproveXdr(
   subscriberAddress,
-  10_000_000n * 1000n,     // cap = plan.amount × 1000
-  ledger + 535_680         // expiry ~1 year from now
+  parseUsdc("1.00") * 1000n,   // cap = amount × 1000 (headroom for many cycles)
+  ledger + 535_680,            // ~1 year of ledgers
 );
-await client.submitAndWait(await signXdr(approveXdr));
+await client.submitAndWait(await signWithWallet(approveXdr));
 
-// Step 2: subscribe (runs first charge immediately)
-const subscribeXdr = await client.buildSubscribeXdr(subscriberAddress, planId);
-const { returnValue } = await client.submitAndWaitWithResult(await signXdr(subscribeXdr));
-const subId = returnValue as bigint;
+// Step 2: subscribe — runs the first charge immediately.
+// Anchor to now, compute the first next-charge date, supply a Snowflake sub id.
+const anchor       = new Date();
+const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, interval));
+const subId        = snowflakeU64();
+const subscribeXdr = await client.buildSubscribeXdr(subscriberAddress, planId, nextChargeAt, subId);
+await client.submitAndWait(await signWithWallet(subscribeXdr));
 
-// Step 3: register in DB
+// Step 3: register in the DB. anchorAt is the origin for all future billing dates.
 await client.registerSubscription({
-  onChainId:     String(subId),
-  planOnChainId: String(planId),
+  onChainId:     subId.toString(),
+  planOnChainId: planId.toString(),
   subscriber:    subscriberAddress,
   merchant:      merchantAddress,
-  amount:        "10000000",
+  amount:        parseUsdc("1.00").toString(),
   payerName:     "Alice",
   payerEmail:    "alice@example.com",
+  anchorAt:      anchor.toISOString(),
 });`}</Pre>
+        <P>Recurring charges after the first are made server-side by the platform/admin key on a schedule — the merchant and subscriber never re-sign. Downtime is collected as one catch-up charge for all elapsed periods, bounded by the cadence floor and the approved allowance.</P>
 
-        <H3>Cancel</H3>
-        <Pre>{`const xdr = await client.buildCancelXdr(subscriberAddress, subId);
-await client.submitAndWait(await signXdr(xdr));`}</Pre>
+        <H3>Cancel and read</H3>
+        <Pre>{`// Cancel (subscriber signs)
+const xdr = await client.buildCancelXdr(subscriberAddress, subId);
+await client.submitAndWait(await signWithWallet(xdr));
 
-        <H3>Read views</H3>
-        <Pre>{`const plan = await client.getPlan(planId);         // on-chain
-const sub  = await client.getSubscription(subId);  // on-chain
-const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</Pre>
-
-        {/* ── REST API ─────────────────────────────────────────────────── */}
-        <H2 id="rest-api">REST API</H2>
+// On-chain read views
+const plan = await client.getPlan(planId);
+// → { id, merchant, asset, amount, min_interval_secs, active }
+const sub  = await client.getSubscription(subId);
+// → { id, plan_id, subscriber, status, next_charge_at, created_at }  (unix seconds)`}</Pre>
+      </>
+    ),
+  },
+  {
+    id: "identity",
+    label: "Customer identity",
+    content: (
+      <>
+        <H2>Customer identity</H2>
+        <P>Attach who paid so it shows on the merchant dashboard and in webhook payloads. The fields are optional everywhere:</P>
+        <Table
+          headers={["Where", "Fields"]}
+          rows={[
+            ["<StellarPayButton>", "payerName, payerEmail props"],
+            ["recordPaymentSettled()", "payerName, payerEmail, payerWallet"],
+            ["registerSubscription()", "payerName, payerEmail"],
+            ["Hosted checkout pages", "collected from the customer on /pay and /subscribe"],
+          ]}
+        />
+      </>
+    ),
+  },
+  {
+    id: "rest-api",
+    label: "REST API",
+    content: (
+      <>
+        <H2>REST API</H2>
         <P>All endpoints are relative to your <Code>apiBase</Code>. Request and response bodies are JSON.</P>
 
         <H3>Payment links</H3>
         <Table
           headers={["Method", "Path", "Description"]}
           rows={[
-            ["GET",  "/api/payments?merchant=", "List payment links for a merchant"],
-            ["POST", "/api/payments",           "Create a payment link"],
-            ["GET",  "/api/payments/:linkId",   "Get a single link by numericId"],
+            ["GET",   "/api/payments?merchant=", "List payment links (with settled counts + volume)"],
+            ["POST",  "/api/payments",           "Create a link — requires numericId, merchant, amount, productName"],
+            ["GET",   "/api/payments/:numericId","Get a single link by numericId"],
+            ["PATCH", "/api/payments/:numericId","Archive/restore or edit productName/description"],
           ]}
         />
 
@@ -220,9 +307,10 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
         <Table
           headers={["Method", "Path", "Description"]}
           rows={[
-            ["GET",  "/api/plans?merchant=", "List plans for a merchant"],
-            ["POST", "/api/plans",           "Register a plan (after on-chain create_plan)"],
-            ["GET",  "/api/plans/:planId",   "Get a plan by onChainId"],
+            ["GET",   "/api/plans?merchant=", "List plans (with subscriber counts)"],
+            ["POST",  "/api/plans",           "Register a plan (after on-chain create_plan)"],
+            ["GET",   "/api/plans/:planId",   "Get a plan by onChainId (includes subscriptions)"],
+            ["PATCH", "/api/plans/:planId",   "Archive/restore or edit productName/description"],
           ]}
         />
 
@@ -230,11 +318,11 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
         <Table
           headers={["Method", "Path", "Description"]}
           rows={[
-            ["GET",   "/api/subscriptions?merchant=",  "List subscriptions for a merchant"],
-            ["GET",   "/api/subscriptions?subscriber=","List subscriptions for a subscriber"],
-            ["POST",  "/api/subscriptions",            "Register a subscription"],
-            ["GET",   "/api/subscriptions/:id",        "Get a subscription by onChainId"],
-            ["PATCH", "/api/subscriptions/:id",        "Update subscription status"],
+            ["GET",   "/api/subscriptions?merchant=",   "List subscriptions for a merchant"],
+            ["GET",   "/api/subscriptions?subscriber=", "List subscriptions for a subscriber"],
+            ["POST",  "/api/subscriptions",             "Register a subscription"],
+            ["GET",   "/api/subscriptions/:id",         "Get by onChainId (joined plan + events)"],
+            ["PATCH", "/api/subscriptions/:id",         "Update subscription status"],
           ]}
         />
 
@@ -242,7 +330,8 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
         <Table
           headers={["Method", "Path", "Description"]}
           rows={[
-            ["GET",  "/api/events?merchant=&type=", "List events (filterable)"],
+            ["GET",  "/api/events?merchant=&type=", "List events (joined link/plan context)"],
+            ["GET",  "/api/events/:txHash",         "Get a single settled payment by txHash"],
             ["POST", "/api/events",                 "Write an event (triggers webhooks)"],
           ]}
         />
@@ -266,10 +355,16 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
             ["DELETE", "/api/webhooks/:id",       "Remove an endpoint"],
           ]}
         />
-
-        {/* ── Webhooks ─────────────────────────────────────────────────── */}
-        <H2 id="webhooks">Webhooks</H2>
-        <P>StellarPay signs every webhook delivery with <Code>HMAC-SHA256</Code>. Verify the signature before processing.</P>
+      </>
+    ),
+  },
+  {
+    id: "webhooks",
+    label: "Webhooks",
+    content: (
+      <>
+        <H2>Webhooks</H2>
+        <P>StellarPay signs every delivery with <Code>HMAC-SHA256</Code>. Verify the signature before processing.</P>
 
         <H3>Event types</H3>
         <Table
@@ -277,16 +372,22 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
           rows={[
             ["payment.settled",        "A one-time payment is confirmed on-chain"],
             ["subscription.charged",   "A billing cycle is pulled successfully"],
-            ["subscription.past_due",  "A charge attempt fails due to insufficient allowance"],
-            ["subscription.canceled",  "A subscriber cancels on-chain"],
+            ["subscription.past_due",  "A charge fails due to insufficient allowance/balance"],
+            ["subscription.canceled",  "A subscriber cancels, or billing is canceled after failed retries"],
           ]}
         />
 
         <H3>Payload shape</H3>
+        <P>The <Code>data</Code> object carries the event&apos;s <Code>evt_</Code> id, the <Code>txHash</Code>, and the event-specific fields.</P>
         <Pre>{`{
-  "type":    "subscription.charged",
-  "data":    { "subId": "0", "txHash": "abc...", "status": "Active" },
-  "created": 1751234567   // Unix seconds
+  "type": "subscription.charged",
+  "data": {
+    "id":     "evt_01KWMC2JJEN0XP5869S47403X8",  // evt_ external id
+    "txHash": "abc123...",
+    "subId":  "331376467167703055",              // on-chain subscription id
+    "status": "Active"
+  },
+  "created": 1751234567                            // Unix seconds
 }`}</Pre>
 
         <H3>Signature header</H3>
@@ -297,15 +398,39 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
         <Pre>{`import { createHmac } from "node:crypto";
 
 function verifySignature(rawBody: string, header: string, secret: string): boolean {
-  const parts  = Object.fromEntries(header.split(",").map(p => p.split("=")));
+  const parts    = Object.fromEntries(header.split(",").map(p => p.split("=")));
   const expected = createHmac("sha256", secret)
     .update(\`\${parts.t}.\${rawBody}\`)
     .digest("hex");
   return expected === parts.v1;
 }`}</Pre>
-
-        {/* ── Types ────────────────────────────────────────────────────── */}
-        <H2 id="types">Types</H2>
+      </>
+    ),
+  },
+  {
+    id: "ids",
+    label: "Resource IDs",
+    content: (
+      <>
+        <H2>Resource IDs</H2>
+        <P>Two ID planes. Don&apos;t mix them:</P>
+        <Table
+          headers={["Plane", "Format", "Used by"]}
+          rows={[
+            ["External", "plink_ / plan_ / sub_ / evt_  + ULID", "Dashboard, API responses, webhooks, support"],
+            ["On-chain", "Snowflake u64 (bigint)", "Contract calls: link_id, plan_id, sub_id"],
+          ]}
+        />
+        <P>External ids are opaque, typed, k-sortable strings generated with <Code>newId(prefix)</Code>. On-chain ids come from <Code>snowflakeU64()</Code> and exceed JS&apos;s safe integer range — always carry them as <Code>bigint</Code> or <Code>string</Code>, never <Code>Number</Code>. For payment links the same Snowflake is both the <Code>numericId</Code> (the <Code>/pay</Code> URL param) and the on-chain <Code>link_id</Code>.</P>
+      </>
+    ),
+  },
+  {
+    id: "types",
+    label: "Types",
+    content: (
+      <>
+        <H2>Types</H2>
         <Pre>{`// SDK config
 interface StellarPayConfig {
   apiBase:           string;
@@ -313,37 +438,130 @@ interface StellarPayConfig {
   sacAddress:        string;
   rpcUrl:            string;
   networkPassphrase: string;
+  horizonUrl?:       string;
+  classicAsset?:     { code: string; issuer: string };
 }
 
-// On-chain types
+// Billing interval (real calendar units)
+interface Interval {
+  unit:  "minute" | "day" | "week" | "month" | "year";
+  count: number;
+}
+
+// On-chain types (read views)
 interface Plan {
   id: bigint; merchant: string; asset: string;
-  amount: bigint; interval: number; active: boolean;
+  amount: bigint; min_interval_secs: number; active: boolean;
 }
 
 interface Subscription {
   id: bigint; plan_id: bigint; subscriber: string;
   status: "Active" | "PastDue" | "Canceled";
-  next_charge: number; created_at: number;
+  next_charge_at: number; created_at: number;   // unix seconds
 }
 
-// DB record types
-interface PaymentLinkRecord { id: string; extId: string; numericId: string;
-  merchant: string; amount: string; description?: string; createdAt: string; }
+// DB record types (mirror the API responses)
+interface PaymentLinkRecord {
+  id: string; extId: string; numericId: string; merchant: string;
+  amount: string; productName: string; description?: string;
+  archivedAt?: string | null; createdAt: string;
+}
 
-interface PlanRecord { id: string; onChainId: string; merchant: string;
-  amount: string; interval: number; intervalLabel: string; createdAt: string; }
+interface PlanRecord {
+  id: string; extId: string; onChainId: string; merchant: string;
+  amount: string; productName: string; description?: string;
+  interval: number; intervalLabel: string;
+  intervalUnit: string; intervalCount: number;
+  archivedAt?: string | null; createdAt: string;
+}
 
-interface SubscriptionRecord { id: string; onChainId: string; planOnChainId: string;
+interface SubscriptionRecord {
+  id: string; extId: string; onChainId: string; planOnChainId: string;
   subscriber: string; merchant: string; amount: string;
-  payerName?: string; payerEmail?: string; status: string; createdAt: string; }`}</Pre>
+  payerName?: string; payerEmail?: string; status: string;
+  anchorAt?: string; periodsCharged?: number;
+  createdAt: string; updatedAt: string;
+}`}</Pre>
+
+        <H3>Billing schedule helpers</H3>
+        <Pre>{`import {
+  minIntervalSeconds, firstNextChargeAt, billingDateAfter,
+  computeCatchUp, toUnixSeconds,
+} from "@stellarpay/sdk";
+
+minIntervalSeconds({ unit: "month", count: 1 })         // on-chain cadence floor (seconds)
+firstNextChargeAt(anchor, { unit: "month", count: 1 })  // Date of the first next charge
+toUnixSeconds(date)                                     // Date → unix seconds`}</Pre>
 
         <H3>Amount helpers</H3>
         <Pre>{`import { formatUsdc, parseUsdc } from "@stellarpay/sdk";
 
 parseUsdc("1.50")       // → 15_000_000n
 formatUsdc(15_000_000n) // → "1.50"`}</Pre>
+      </>
+    ),
+  },
+  {
+    id: "limitations",
+    label: "Limitations & mobile",
+    content: (
+      <>
+        <H2>Limitations &amp; mobile</H2>
+        <Note>
+          <strong>Signing is browser-wallet only today.</strong> The SDK returns unsigned XDR and you bring the signature — the current supported path is <Code>Freighter</Code> in a desktop browser. The hosted checkout pages require a browser wallet too.
+        </Note>
+        <P>Planned for Phase 5 (additive — no breaking changes to the calls above):</P>
+        <Table
+          headers={["Coming", "What it adds"]}
+          rows={[
+            ["SEP-0007 QR", "Encode a payment as a web+stellar: URI + QR on hosted checkout for mobile wallets"],
+            ["WalletConnect v2", "LOBSTR + WalletConnect signing path for mobile payers"],
+            ["Responsive checkout", "Hosted /pay and /subscribe adapt to narrow viewports"],
+          ]}
+        />
+        <P>Everything runs on Stellar <strong>testnet</strong> today. Treat the deployed contract, SAC, and demo assets as disposable — do not send real value.</P>
+      </>
+    ),
+  },
+];
 
+export default function DocsPage() {
+  const [active, setActive] = useState(sections[0].id);
+  const current = sections.find((s) => s.id === active) ?? sections[0];
+
+  return (
+    <div className="flex max-w-6xl mx-auto pl-4 pr-8 gap-10" style={{ paddingTop: "2rem", paddingBottom: "3rem" }}>
+
+      {/* Tab rail */}
+      <aside className="w-48 shrink-0">
+        <div className="sticky top-8">
+          <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">Documentation</p>
+          <nav className="flex flex-col gap-0.5">
+            {sections.map(({ id, label }) => {
+              const isActive = id === active;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setActive(id)}
+                  className={`text-left text-sm rounded-md px-3 py-1.5 transition-colors border-l-2 ${
+                    isActive
+                      ? "border-neutral-900 text-neutral-900 font-medium bg-neutral-100"
+                      : "border-transparent text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 max-w-3xl">
+        <h1 className="text-2xl font-bold mb-2">StellarPay Developer Docs</h1>
+        <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API. Non-custodial and wallet-to-wallet — the SDK builds unsigned XDR, your user&apos;s wallet signs, and settlement happens on-chain.</P>
+        <div className="mt-8">{current.content}</div>
       </div>
     </div>
   );

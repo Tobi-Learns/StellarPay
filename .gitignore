@@ -5,8 +5,8 @@
 AGENTS.md
 CLAUDE.md
 
-# Internal docs and project briefs
-docs/
+# Internal docs and project briefs (repo-root only — not the /docs app route)
+/docs/
 StellarPay.md
 
 # Dependencies

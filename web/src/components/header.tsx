@@ -13,7 +13,13 @@ export function Header() {
         StellarPay
       </Link>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
+        <Link
+          href="/docs"
+          className="text-sm text-neutral-500 hover:text-neutral-900 transition-colors"
+        >
+          Docs
+        </Link>
         {address ? (
           <>
             <span className="text-sm font-mono text-neutral-500 bg-neutral-100 px-3 py-1 rounded-full">

@@ -2,45 +2,25 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { parseUsdc } from "@stellarpay/sdk";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
-const AMOUNT = parseUsdc("4.00");
+// Pre-provisioned link (encodedId) from the seed — see scripts/seed-test-merchant.mjs.
+const LINK_ENCODED_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_HOSTED ?? "";
 
-type State = "creating" | "redirecting" | "error";
+type State = "redirecting" | "error";
 
 export default function HostedCheckoutPage() {
-  const [state, setState] = useState<State>("creating");
+  const [state, setState] = useState<State>("redirecting");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let mounted = true;
-
-    fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: AMOUNT.toString(),
-        description: "Premium Coffee Bundle - hosted checkout",
-        createLink: true,
-      }),
-    })
-      .then((res) => res.json())
-      .then((data: { encodedId?: string; error?: string }) => {
-        if (!data.encodedId) throw new Error(data.error ?? "Could not create hosted checkout");
-        if (!mounted) return;
-        setState("redirecting");
-        window.location.assign(`${API_BASE}/pay/${data.encodedId}`);
-      })
-      .catch((e: unknown) => {
-        if (!mounted) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setState("error");
-      });
-
-    return () => {
-      mounted = false;
-    };
+    if (!LINK_ENCODED_ID) {
+      setError("Demo catalog not configured — set NEXT_PUBLIC_DEMO_CHECKOUT_HOSTED (run scripts/seed-test-merchant.mjs).");
+      setState("error");
+      return;
+    }
+    // The merchant already provisioned this link; just hand off to hosted checkout.
+    window.location.assign(`${API_BASE}/pay/${LINK_ENCODED_ID}`);
   }, []);
 
   return (
@@ -51,9 +31,8 @@ export default function HostedCheckoutPage() {
         </p>
         <h1 style={{ fontSize: 24, margin: 0 }}>Premium Coffee Bundle</h1>
         <p style={{ color: "#57534e", fontSize: 14, margin: 0 }}>
-          {state === "creating" && "Creating a StellarPay hosted payment link for 4.00 USDC..."}
-          {state === "redirecting" && "Redirecting to StellarPay..."}
-          {state === "error" && "Could not create hosted checkout."}
+          {state === "redirecting" && "Redirecting to StellarPay hosted checkout..."}
+          {state === "error" && "Could not open hosted checkout."}
         </p>
         {state === "error" && <p style={{ color: "#dc2626", fontSize: 12, margin: 0 }}>{error}</p>}
       </div>

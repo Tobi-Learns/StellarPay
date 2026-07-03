@@ -8,6 +8,8 @@ import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
+// Pre-provisioned link (numericId) from the seed — see scripts/seed-test-merchant.mjs.
+const LINK_NUMERIC_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_HEADLESS ?? "";
 
 const AMOUNT = parseUsdc("7.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -16,7 +18,6 @@ type Step = "preparing" | "ready" | "connecting" | "setup" | "signing" | "submit
 
 type CheckoutLink = {
   numericId: string;
-  encodedId: string;
 };
 
 async function sign(xdr: string, address: string): Promise<string> {
@@ -61,36 +62,14 @@ export default function HeadlessCheckoutPage() {
   }, [step]);
 
   useEffect(() => {
-    let mounted = true;
-
-    fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: AMOUNT_STR,
-        description: "Premium Coffee Bundle",
-      }),
-    })
-      .then((res) => res.json())
-      .then((data: CheckoutLink & { error?: string }) => {
-        if (!data.numericId || !data.encodedId) {
-          throw new Error(data.error ?? "Could not create checkout");
-        }
-        if (mounted) {
-          setLink({ numericId: data.numericId, encodedId: data.encodedId });
-          setStep("ready");
-        }
-      })
-      .catch((e: unknown) => {
-        if (mounted) {
-          setError(String(e));
-          setStep("error");
-        }
-      });
-
-    return () => {
-      mounted = false;
-    };
+    // The merchant already provisioned this link; reference it, don't create one.
+    if (!LINK_NUMERIC_ID) {
+      setError("Demo catalog not configured — set NEXT_PUBLIC_DEMO_CHECKOUT_HEADLESS (run scripts/seed-test-merchant.mjs).");
+      setStep("error");
+      return;
+    }
+    setLink({ numericId: LINK_NUMERIC_ID });
+    setStep("ready");
   }, []);
 
   async function handlePay() {

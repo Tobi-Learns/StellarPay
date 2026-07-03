@@ -6,7 +6,6 @@ import {
   StellarPayClient,
   TESTNET,
   parseUsdc,
-  minIntervalSeconds,
   firstNextChargeAt,
   toUnixSeconds,
   type Interval,
@@ -16,8 +15,11 @@ import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS!;
+// Pre-provisioned plan (onChainId) from the seed — see scripts/seed-test-merchant.mjs.
+// INTERVAL must match the seeded plan's cadence so firstNextChargeAt clears the
+// contract's subscribe floor check.
+const PLAN_ID = process.env.NEXT_PUBLIC_DEMO_PLAN_EMBEDDED ?? "";
 const INTERVAL: Interval = { unit: "minute", count: 5 };
-const INTERVAL_LABEL = "Demo (every 5 minutes)";
 
 const AMOUNT = parseUsdc("2.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -44,6 +46,10 @@ export default function SubscribeEmbeddedPage() {
     setError("");
 
     try {
+      if (!PLAN_ID) {
+        throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_EMBEDDED (run scripts/seed-test-merchant.mjs).");
+      }
+
       const conn = await isConnected();
       if ("error" in conn || !conn.isConnected) throw new Error("Freighter is not installed");
       const access = await requestAccess();
@@ -59,44 +65,8 @@ export default function SubscribeEmbeddedPage() {
         await c.submitAndWait(tlSigned);
       }
 
-      // Look up the merchant's existing plan by MERCHANT_ADDRESS (not subscriber address).
-      const res = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: AMOUNT_STR, intervalLabel: INTERVAL_LABEL, merchant: MERCHANT_ADDRESS }),
-      });
-      const data = await res.json() as { planId: string | null; existing: boolean; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Server error");
-
-      let planId: bigint;
-
-      if (data.planId) {
-        planId = BigInt(data.planId);
-      } else if (address === MERCHANT_ADDRESS) {
-        // Convenience: if the subscriber IS the merchant (demo / self-hosted), create the plan now.
-        const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, minIntervalSeconds(INTERVAL));
-        const { returnValue } = await c.submitAndWaitWithResult(await sign(createXdr, address));
-        planId = returnValue as bigint;
-        const putRes = await fetch("/api/subscribe", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            onChainId: String(planId),
-            merchant: MERCHANT_ADDRESS,
-            amount: AMOUNT_STR,
-            interval: minIntervalSeconds(INTERVAL),
-            intervalLabel: INTERVAL_LABEL,
-            intervalUnit: INTERVAL.unit,
-            intervalCount: INTERVAL.count,
-          }),
-        });
-        if (!putRes.ok) {
-          const { error } = await putRes.json() as { error?: string };
-          throw new Error(error ?? "Failed to register plan");
-        }
-      } else {
-        throw new Error("No subscription plan found. The merchant needs to create one first.");
-      }
+      // Reference the merchant's pre-provisioned plan — no lookup, no create.
+      const planId = BigInt(PLAN_ID);
 
       // Step 1: Approve SAC spending cap
       setStep("approving");

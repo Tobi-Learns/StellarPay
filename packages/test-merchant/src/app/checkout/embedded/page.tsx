@@ -8,6 +8,8 @@ import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
+// Pre-provisioned link (numericId) from the seed — see scripts/seed-test-merchant.mjs.
+const LINK_NUMERIC_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_EMBEDDED ?? "";
 
 const AMOUNT = parseUsdc("5.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -22,21 +24,14 @@ export default function EmbeddedCheckoutPage() {
   const [payError, setPayError] = useState("");
 
   useEffect(() => {
-    fetch("/api/checkout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount: AMOUNT_STR, description: "Premium Coffee Bundle" }),
-    })
-      .then((res) => res.json())
-      .then((data: { numericId?: string; error?: string }) => {
-        if (!data.numericId) throw new Error(data.error ?? "Could not create checkout");
-        setLinkNumericId(BigInt(data.numericId));
-        setPageState("ready");
-      })
-      .catch((e: unknown) => {
-        setLoadError(String(e));
-        setPageState("error");
-      });
+    // The merchant already provisioned this link; reference it, don't create one.
+    if (!LINK_NUMERIC_ID) {
+      setLoadError("Demo catalog not configured — set NEXT_PUBLIC_DEMO_CHECKOUT_EMBEDDED (run scripts/seed-test-merchant.mjs).");
+      setPageState("error");
+      return;
+    }
+    setLinkNumericId(BigInt(LINK_NUMERIC_ID));
+    setPageState("ready");
   }, []);
 
   return (

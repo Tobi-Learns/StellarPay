@@ -7,7 +7,6 @@ import {
   StellarPayClient,
   TESTNET,
   parseUsdc,
-  minIntervalSeconds,
   firstNextChargeAt,
   toUnixSeconds,
   type Interval,
@@ -16,8 +15,11 @@ import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
+// Pre-provisioned plan (onChainId) from the seed — see scripts/seed-test-merchant.mjs.
+// INTERVAL must match the seeded plan's cadence so firstNextChargeAt clears the
+// contract's subscribe floor check.
+const PLAN_ID = process.env.NEXT_PUBLIC_DEMO_PLAN_HEADLESS ?? "";
 const INTERVAL: Interval = { unit: "minute", count: 5 };
-const INTERVAL_LABEL = "Demo (every 5 minutes)";
 
 const AMOUNT = parseUsdc("3.00");
 const AMOUNT_STR = AMOUNT.toString();
@@ -26,18 +28,11 @@ type Step =
   | "idle"
   | "connecting"
   | "setup"
-  | "plan"
   | "approving"
   | "subscribing"
   | "registering"
   | "success"
   | "error";
-
-type PlanLookup = {
-  planId: string | null;
-  existing: boolean;
-  error?: string;
-};
 
 async function sign(xdr: string, address: string): Promise<string> {
   const result = await signTransaction(xdr, {
@@ -65,8 +60,6 @@ export default function HeadlessSubscribePage() {
         return "Connecting wallet...";
       case "setup":
         return "Checking USDC trustline...";
-      case "plan":
-        return "Finding subscription plan...";
       case "approving":
         return "Approving spending cap...";
       case "subscribing":
@@ -87,56 +80,6 @@ export default function HeadlessSubscribePage() {
   const isWorking = step !== "idle" && step !== "error" && step !== "success";
   const canSubscribe = step === "idle" || step === "error";
 
-  async function lookupOrCreatePlan(c: StellarPayClient, address: string): Promise<bigint> {
-    setStep("plan");
-
-    const res = await fetch("/api/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: AMOUNT_STR,
-        intervalLabel: INTERVAL_LABEL,
-        merchant: MERCHANT_ADDRESS,
-      }),
-    });
-    const data = await res.json() as PlanLookup;
-    if (!res.ok) throw new Error(data.error ?? "Could not look up plan");
-
-    if (data.planId) {
-      return BigInt(data.planId);
-    }
-
-    if (address !== MERCHANT_ADDRESS) {
-      throw new Error("No plan found. The merchant needs to create the Monthly Coffee Club plan first.");
-    }
-
-    const createXdr = await c.buildCreatePlanXdr(address, AMOUNT, minIntervalSeconds(INTERVAL));
-    const signedCreateXdr = await sign(createXdr, address);
-    const { returnValue } = await c.submitAndWaitWithResult(signedCreateXdr);
-    const createdPlanId = returnValue as bigint;
-
-    const registerPlanRes = await fetch("/api/subscribe", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        onChainId: String(createdPlanId),
-        merchant: MERCHANT_ADDRESS,
-        amount: AMOUNT_STR,
-        interval: minIntervalSeconds(INTERVAL),
-        intervalLabel: INTERVAL_LABEL,
-        intervalUnit: INTERVAL.unit,
-        intervalCount: INTERVAL.count,
-      }),
-    });
-
-    if (!registerPlanRes.ok) {
-      const body = await registerPlanRes.json() as { error?: string };
-      throw new Error(body.error ?? "Failed to register plan");
-    }
-
-    return createdPlanId;
-  }
-
   async function handleSubscribe() {
     setError("");
     setStep("connecting");
@@ -144,6 +87,9 @@ export default function HeadlessSubscribePage() {
     try {
       if (!MERCHANT_ADDRESS) {
         throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
+      }
+      if (!PLAN_ID) {
+        throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_HEADLESS (run scripts/seed-test-merchant.mjs).");
       }
 
       const conn = await isConnected();
@@ -165,7 +111,8 @@ export default function HeadlessSubscribePage() {
         await c.submitAndWait(signedTrustlineXdr);
       }
 
-      const resolvedPlanId = await lookupOrCreatePlan(c, address);
+      // Reference the merchant's pre-provisioned plan — no lookup, no create.
+      const resolvedPlanId = BigInt(PLAN_ID);
       setPlanId(resolvedPlanId);
 
       setStep("approving");
@@ -300,7 +247,7 @@ export default function HeadlessSubscribePage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
               {[
-                { label: "Plan", active: step === "plan" || step === "approving" || step === "subscribing" || step === "registering", done: Boolean(planId) },
+                { label: "Plan", active: false, done: Boolean(planId) },
                 { label: "Approve", active: step === "approving", done: approveDone },
                 { label: "Subscribe", active: step === "subscribing" || step === "registering", done: subscribeDone },
               ].map(({ label, active, done }) => (

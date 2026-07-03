@@ -32,6 +32,7 @@ export interface StoredSubscription {
   onChainId: string;    // sub ID u64 as string — on-chain id, used for routing/contract
   extId?: string;       // sub_ + ULID — external handle shown in the dashboard (3.2); absent on localStorage-only rows
   planId: string;       // plan ID u64 as string
+  planExtId?: string;   // plan_ + ULID of the plan this sub is on — cross-reference display (3.2f)
   subscriber: string;
   merchant: string;
   amount: string;       // stroops (plan amount)

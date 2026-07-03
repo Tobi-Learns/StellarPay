@@ -14,6 +14,7 @@ import {
 import { findSubscription } from "@/lib/plans";
 
 type SubscriptionRecord = {
+  extId?: string;
   onChainId: string;
   planOnChainId: string;
   subscriber: string;
@@ -26,6 +27,7 @@ type SubscriptionRecord = {
 };
 
 type SubscriptionView = Subscription & {
+  extId?: string;
   merchant?: string;
   amount?: string;
   estimatedNextChargeAt?: string;
@@ -39,6 +41,7 @@ async function loadSubscription(id: string): Promise<SubscriptionView> {
     return {
       id: BigInt(record.onChainId),
       plan_id: BigInt(record.planOnChainId),
+      extId: record.extId,
       subscriber: record.subscriber,
       merchant: record.merchant,
       amount: record.amount,
@@ -146,7 +149,7 @@ export default function ManageSubscriptionPage({
           ← My subscriptions
         </Link>
         <span className="text-neutral-300">/</span>
-        <span className="text-sm">Subscription #{id}</span>
+        <span className="text-sm font-mono">{sub?.extId ?? `Subscription #${id}`}</span>
       </div>
 
       {loading ? (

@@ -11,8 +11,10 @@ import {
 import { findSubscription } from "@/lib/plans";
 
 type SubscriptionRecord = {
+  extId?: string;
   onChainId: string;
   planOnChainId: string;
+  plan?: { extId: string };
   subscriber: string;
   amount: string;
   status: Subscription["status"];
@@ -22,6 +24,8 @@ type SubscriptionRecord = {
 };
 
 type SubscriptionView = Subscription & {
+  extId?: string;
+  planExtId?: string;
   amount?: string;
   estimatedNextChargeAt?: string;
   nextChargeOverdue?: boolean;
@@ -34,6 +38,8 @@ async function loadSubscription(id: string): Promise<SubscriptionView> {
     return {
       id: BigInt(record.onChainId),
       plan_id: BigInt(record.planOnChainId),
+      extId: record.extId,
+      planExtId: record.plan?.extId,
       subscriber: record.subscriber,
       status: record.status,
       amount: record.amount,
@@ -99,7 +105,7 @@ export default function SubscriptionDetailPage({
           &larr; Billing
         </Link>
         <span className="text-neutral-300">/</span>
-        <span className="text-sm">Subscription #{id}</span>
+        <span className="text-sm font-mono">{sub?.extId ?? `Subscription #${id}`}</span>
       </div>
 
       {loading ? (
@@ -116,6 +122,9 @@ export default function SubscriptionDetailPage({
 
             <span className="text-neutral-400">Subscriber</span>
             <span className="font-mono text-xs">{truncateAddress(sub.subscriber)}</span>
+
+            <span className="text-neutral-400">Plan</span>
+            <span className="font-mono text-xs">{sub.planExtId ?? `plan #${sub.plan_id.toString()}`}</span>
 
             {(stored || sub.amount) && (
               <>

@@ -21,8 +21,8 @@ export default function PortalPage() {
       .then((r) => r.json())
       .then((rows) => {
         if (Array.isArray(rows) && rows.length > 0) {
-          setSubs(rows.map((s: { onChainId: string; planOnChainId: string; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({
-            ...s, planId: s.planOnChainId, createdAt: new Date(s.createdAt).getTime(),
+          setSubs(rows.map((s: { extId: string; onChainId: string; planOnChainId: string; plan?: { extId: string }; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({
+            ...s, planId: s.planOnChainId, planExtId: s.plan?.extId, createdAt: new Date(s.createdAt).getTime(),
           })));
         } else {
           setSubs(loadSubscriptions().filter((s) => s.subscriber === address));
@@ -55,7 +55,7 @@ export default function PortalPage() {
                   {formatUsdc(BigInt(sub.amount))} USDC · {sub.intervalLabel.split(" ")[0].toLowerCase()}
                 </p>
                 <p className="text-xs text-neutral-400 mt-0.5">
-                  Sub #{sub.onChainId} · Plan #{sub.planId} · {new Date(sub.createdAt).toLocaleDateString()}
+                  <span className="font-mono">{sub.extId ?? `sub #${sub.onChainId}`}</span> · {sub.planExtId ?? `plan #${sub.planId}`} · {new Date(sub.createdAt).toLocaleDateString()}
                 </p>
               </div>
               <Link

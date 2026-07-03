@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
   const subs = await db.subscription.findMany({
     where: merchant ? { merchant } : { subscriber: subscriber! },
     orderBy: { createdAt: "desc" },
+    include: { plan: { select: { extId: true } } }, // for the plan_ cross-reference (3.2f)
   });
   return NextResponse.json(subs);
 }

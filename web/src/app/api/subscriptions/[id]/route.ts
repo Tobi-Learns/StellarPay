@@ -7,7 +7,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const sub = await db.subscription.findUnique({ where: { onChainId: id } });
+  const sub = await db.subscription.findUnique({
+    where: { onChainId: id },
+    include: { plan: { select: { extId: true } } }, // for the plan_ cross-reference (3.2f)
+  });
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {

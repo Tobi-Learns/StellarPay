@@ -36,8 +36,9 @@ export default function PaymentsPage() {
       fetch(`/api/events?merchant=${enc}&type=payment.settled`).then((r) => r.json()).catch(() => []),
     ]).then(([rows, events]) => {
       if (Array.isArray(rows) && rows.length > 0) {
-        setLinks(rows.map((r: { encodedId: string; numericId: string; merchant: string; amount: string; description: string | null; createdAt: string }) => ({
+        setLinks(rows.map((r: { extId: string; encodedId: string; numericId: string; merchant: string; amount: string; description: string | null; createdAt: string }) => ({
           id: r.numericId,
+          extId: r.extId,
           encodedId: r.encodedId,
           merchant: r.merchant,
           amount: r.amount,
@@ -121,6 +122,7 @@ export default function PaymentsPage() {
                   {link.description || "No description"}
                 </p>
                 <p className="text-xs text-neutral-400 mt-0.5">
+                  {link.extId && <span className="font-mono">{link.extId} · </span>}
                   {formatUsdc(BigInt(link.amount))} USDC · {new Date(link.createdAt).toLocaleDateString()}
                 </p>
               </div>

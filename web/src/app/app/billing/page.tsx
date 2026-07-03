@@ -30,7 +30,7 @@ export default function BillingPage() {
       );
       setSubs(
         Array.isArray(apiSubs) && apiSubs.length > 0
-          ? apiSubs.map((s: { extId: string; onChainId: string; planOnChainId: string; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...s, planId: s.planOnChainId, createdAt: new Date(s.createdAt).getTime() }))
+          ? apiSubs.map((s: { extId: string; onChainId: string; planOnChainId: string; plan?: { extId: string }; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...s, planId: s.planOnChainId, planExtId: s.plan?.extId, createdAt: new Date(s.createdAt).getTime() }))
           : loadSubscriptions().filter((s) => s.merchant === address)
       );
     }).finally(() => setLoading(false));
@@ -111,7 +111,7 @@ export default function BillingPage() {
                   {(sub as unknown as { payerEmail?: string }).payerEmail && (
                     <span>{(sub as unknown as { payerEmail?: string }).payerEmail} · </span>
                   )}
-                  {formatUsdc(BigInt(sub.amount))} USDC · Plan #{sub.planId} · {new Date(sub.createdAt).toLocaleDateString()}
+                  <span className="font-mono">{sub.extId ?? `sub #${sub.onChainId}`}</span> · {formatUsdc(BigInt(sub.amount))} USDC · {sub.planExtId ?? `plan #${sub.planId}`}
                 </p>
               </div>
               <Link

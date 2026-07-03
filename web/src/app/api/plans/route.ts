@@ -9,13 +9,23 @@ export async function GET(req: NextRequest) {
   const plans = await db.plan.findMany({
     where: { merchant },
     orderBy: { createdAt: "desc" },
+    include: {
+      subscriptions: { select: { status: true } },
+    },
   });
-  return NextResponse.json(plans);
+  return NextResponse.json(plans.map((plan) => {
+    const { subscriptions, ...row } = plan;
+    return {
+      ...row,
+      subscriberCount: subscriptions.length,
+      activeSubscriberCount: subscriptions.filter((sub) => sub.status === "Active").length,
+    };
+  }));
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount } = body;
+  const { onChainId, merchant, amount, productName, description, interval, intervalLabel, intervalUnit, intervalCount } = body;
 
   if (!onChainId || !merchant || !amount || interval == null || !intervalLabel || !intervalUnit || intervalCount == null) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -24,7 +34,18 @@ export async function POST(req: NextRequest) {
   const plan = await db.plan.upsert({
     where: { onChainId },
     update: {},
-    create: { extId: newId("plan"), onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount },
+    create: {
+      extId: newId("plan"),
+      onChainId,
+      merchant,
+      amount,
+      productName: productName?.trim() || "Untitled product or service",
+      description,
+      interval,
+      intervalLabel,
+      intervalUnit,
+      intervalCount,
+    },
   });
   return NextResponse.json(plan, { status: 201 });
 }

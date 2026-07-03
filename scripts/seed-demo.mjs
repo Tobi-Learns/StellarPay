@@ -61,10 +61,10 @@ async function main() {
   const numericId = String(Date.now());
 
   await client.query(
-    `INSERT INTO "PaymentLink" ("id", "extId", "numericId", "merchant", "amount", "description", "createdAt")
-     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())
+    `INSERT INTO "PaymentLink" ("id", "extId", "numericId", "merchant", "amount", "productName", "description", "createdAt")
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NOW())
      ON CONFLICT ("numericId") DO NOTHING`,
-    [newId("plink"), numericId, MERCHANT, DEMO_AMOUNT, "Demo product — StellarPay"]
+    [newId("plink"), numericId, MERCHANT, DEMO_AMOUNT, "Demo product", "Demo product — StellarPay"]
   );
   console.log("✓ Demo payment link created");
   console.log(`  /pay/${numericId}`);

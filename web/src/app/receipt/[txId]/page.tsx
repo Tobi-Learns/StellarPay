@@ -10,6 +10,7 @@ function ReceiptContent({ txId }: { txId: string }) {
 
   const amount = searchParams.get("amount");
   const merchant = searchParams.get("merchant");
+  const productName = searchParams.get("productName");
   const description = searchParams.get("description");
 
   const explorerUrl = `https://stellar.expert/explorer/testnet/tx/${txId}`;
@@ -26,6 +27,9 @@ function ReceiptContent({ txId }: { txId: string }) {
 
       {amount && (
         <p className="text-3xl font-bold mt-3 mb-1">{amount} USDC</p>
+      )}
+      {productName && (
+        <p className="text-sm font-medium text-neutral-900 mb-1">{productName}</p>
       )}
       {description && (
         <p className="text-sm text-neutral-500 mb-1">{description}</p>

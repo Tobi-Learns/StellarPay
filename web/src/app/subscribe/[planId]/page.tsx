@@ -29,13 +29,15 @@ type RegisteredPlan = {
   onChainId: string;
   merchant: string;
   amount: string;
+  productName?: string;
+  description?: string | null;
   interval: number;
   intervalUnit?: IntervalUnit;
   intervalCount?: number;
   intervalLabel?: string;
 };
 
-type LoadedPlan = { plan: Plan; interval: Interval; intervalLabel: string };
+type LoadedPlan = { plan: Plan; interval: Interval; intervalLabel: string; productName?: string; description?: string | null };
 
 async function loadPlan(planId: string): Promise<LoadedPlan> {
   const res = await fetch(`/api/plans/${planId}`);
@@ -56,6 +58,8 @@ async function loadPlan(planId: string): Promise<LoadedPlan> {
       },
       interval,
       intervalLabel: registeredPlan.intervalLabel ?? `${interval.count} ${interval.unit}`,
+      productName: registeredPlan.productName,
+      description: registeredPlan.description,
     };
   }
 
@@ -136,6 +140,8 @@ export default function SubscribeCheckoutPage({
         intervalLabel,
         intervalUnit: interval.unit,
         intervalCount: interval.count,
+        planProductName: loaded.productName,
+        planDescription: loaded.description ?? undefined,
         anchorAt: anchor.toISOString(),
         periodsCharged: 1,
         payerName: payerName.trim(),
@@ -156,7 +162,7 @@ export default function SubscribeCheckoutPage({
           body: JSON.stringify({
             type: "subscription.created",
             txHash: subscribeTxHash,
-            data: { subId, planId, payerName: payerName.trim(), payerEmail: payerEmail.trim() },
+            data: { subId, planId, productName: loaded.productName, payerName: payerName.trim(), payerEmail: payerEmail.trim() },
           }),
         })
       ).catch(() => {});
@@ -179,7 +185,7 @@ export default function SubscribeCheckoutPage({
     );
   }
 
-  if (!plan) {
+  if (!loaded || !plan) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[calc(100vh-57px)]">
         <p className="text-sm text-neutral-500">Plan not found.</p>
@@ -192,8 +198,10 @@ export default function SubscribeCheckoutPage({
       <div className="max-w-sm w-full mx-auto px-6">
         <div className="bg-white border border-neutral-200 rounded-xl p-6 shadow-sm">
           <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Subscription</p>
+          {loaded.productName && <p className="text-sm font-medium text-neutral-900 mb-1">{loaded.productName}</p>}
           <p className="text-3xl font-bold mb-1">{formatUsdc(plan.amount)} USDC</p>
-          <p className="text-sm text-neutral-500 mb-1">per cycle</p>
+          <p className="text-sm text-neutral-500 mb-1">per cycle · {loaded.intervalLabel}</p>
+          {loaded.description && <p className="text-sm text-neutral-600 mb-4">{loaded.description}</p>}
           <p className="text-xs text-neutral-400 mb-6">
             Merchant: <span className="font-mono">{truncateAddress(plan.merchant)}</span>
           </p>

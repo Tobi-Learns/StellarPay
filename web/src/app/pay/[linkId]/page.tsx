@@ -12,7 +12,7 @@ interface MerchantProfile { displayName?: string | null; verified?: boolean }
 // resolves a plan by id), so the amount/merchant are server-authoritative, not
 // read from a tamperable URL blob. Old self-contained blob links still decode as
 // a fallback so anything shared before this change keeps working.
-type LinkData = { merchant: string; amount: string; numericId: string; description?: string };
+type LinkData = { id?: string; merchant: string; amount: string; numericId: string; productName?: string; description?: string };
 
 export default function CheckoutPage({
   params,
@@ -37,15 +37,34 @@ export default function CheckoutPage({
       try {
         const res = await fetch(`/api/payments/${encodeURIComponent(linkId)}`);
         if (res.ok) {
-          const row = await res.json() as { merchant: string; amount: string; numericId: string; description?: string | null };
-          if (active) { setLink({ merchant: row.merchant, amount: row.amount, numericId: row.numericId, description: row.description ?? undefined }); setLoadState("ready"); }
+          const row = await res.json() as { id: string; merchant: string; amount: string; numericId: string; productName?: string | null; description?: string | null };
+          if (active) {
+            setLink({
+              id: row.id,
+              merchant: row.merchant,
+              amount: row.amount,
+              numericId: row.numericId,
+              productName: row.productName ?? undefined,
+              description: row.description ?? undefined,
+            });
+            setLoadState("ready");
+          }
           return;
         }
       } catch { /* fall through to legacy decode */ }
       // Legacy fallback: old self-contained base64 blob links.
       try {
         const d = decodeLink(linkId);
-        if (active) { setLink({ merchant: d.merchant, amount: d.amount, numericId: String(d.id ?? ""), description: d.description }); setLoadState("ready"); }
+        if (active) {
+          setLink({
+            merchant: d.merchant,
+            amount: d.amount,
+            numericId: String(d.id ?? ""),
+            productName: d.productName,
+            description: d.description,
+          });
+          setLoadState("ready");
+        }
         return;
       } catch { /* not a blob either */ }
       if (active) setLoadState("invalid");
@@ -109,10 +128,12 @@ export default function CheckoutPage({
         body: JSON.stringify({
           type: "payment.settled",
           txHash,
+          paymentLinkId: link.id,
           data: {
             amount: link.amount,
             merchant: link.merchant,
             linkId,
+            productName: link.productName,
             payerName: payerName.trim(),
             payerEmail: payerEmail.trim(),
             payerWallet: address,
@@ -123,6 +144,7 @@ export default function CheckoutPage({
       const qs = new URLSearchParams({
         amount: amountDisplay,
         merchant: merchant?.displayName ?? link.merchant,
+        productName: link.productName ?? "",
         description: link.description ?? "",
       });
       router.push(`/receipt/${txHash}?${qs.toString()}`);
@@ -148,6 +170,7 @@ export default function CheckoutPage({
           </div>
 
           <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Payment request</p>
+          {link.productName && <p className="text-sm font-medium text-neutral-900 mb-1">{link.productName}</p>}
           <p className="text-3xl font-bold mb-1">{amountDisplay} USDC</p>
           {link.description && (
             <p className="text-sm text-neutral-600 mb-4">{link.description}</p>

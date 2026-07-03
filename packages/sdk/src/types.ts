@@ -46,7 +46,9 @@ export interface PaymentLinkRecord {
   numericId: string;    // Snowflake u64 — the canonical link id (URL + contract link_id)
   merchant: string;
   amount: string;
+  productName: string;
   description?: string;
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -56,10 +58,13 @@ export interface PlanRecord {
   onChainId: string;
   merchant: string;
   amount: string;
+  productName: string;
+  description?: string;
   interval: number;         // min_interval_secs
   intervalLabel: string;
   intervalUnit: string;
   intervalCount: number;
+  archivedAt?: string | null;
   createdAt: string;
 }
 

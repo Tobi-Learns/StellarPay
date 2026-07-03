@@ -16,8 +16,8 @@ try {
   const se = await c.query(`DELETE FROM "Event" WHERE "subscriptionId" IN (SELECT id FROM "Subscription" WHERE merchant = $1)`, [M]);
   const su = await c.query(`DELETE FROM "Subscription" WHERE merchant = $1`, [M]);
   const pl = await c.query(`DELETE FROM "Plan" WHERE merchant = $1`, [M]);
-  const le = await c.query(`DELETE FROM "Event" WHERE "paymentLinkId" IN (SELECT id FROM "PaymentLink" WHERE merchant = $1 AND description LIKE $2)`, [M, "Premium Coffee Bundle%"]);
-  const li = await c.query(`DELETE FROM "PaymentLink" WHERE merchant = $1 AND description LIKE $2`, [M, "Premium Coffee Bundle%"]);
+  const le = await c.query(`DELETE FROM "Event" WHERE "paymentLinkId" IN (SELECT id FROM "PaymentLink" WHERE merchant = $1 AND "productName" = $2)`, [M, "Premium Coffee Bundle"]);
+  const li = await c.query(`DELETE FROM "PaymentLink" WHERE merchant = $1 AND "productName" = $2`, [M, "Premium Coffee Bundle"]);
   await c.query("COMMIT");
   console.log(`Deleted: ${su.rowCount} subs, ${pl.rowCount} plans, ${se.rowCount + le.rowCount} events, ${li.rowCount} demo links`);
 } catch (e) {

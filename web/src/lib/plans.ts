@@ -19,6 +19,8 @@ export interface StoredPlan {
   extId?: string;       // plan_ + ULID — external handle shown in the dashboard (3.2); absent on localStorage-only rows
   merchant: string;
   amount: string;       // stroops
+  productName?: string;
+  description?: string;
   interval: number;     // min_interval_secs — the on-chain cadence floor
   intervalLabel: string;
   // Optional: present when written by the create-plan form; the list views that
@@ -33,6 +35,8 @@ export interface StoredSubscription {
   extId?: string;       // sub_ + ULID — external handle shown in the dashboard (3.2); absent on localStorage-only rows
   planId: string;       // plan ID u64 as string
   planExtId?: string;   // plan_ + ULID of the plan this sub is on — cross-reference display (3.2f)
+  planProductName?: string;
+  planDescription?: string;
   subscriber: string;
   merchant: string;
   amount: string;       // stroops (plan amount)

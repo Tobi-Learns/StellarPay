@@ -79,9 +79,9 @@ const INTERVAL_LABEL = "Demo (every 5 minutes)";
 // link_id) is a non-sequential Snowflake, generated on first create; re-runs
 // find the existing link by (merchant, amount, description) so they don't dup.
 const LINKS = [
-  { key: "HOSTED",   amount: parseUsdc("4.00").toString(), description: "Premium Coffee Bundle — hosted checkout" },
-  { key: "EMBEDDED", amount: parseUsdc("5.00").toString(), description: "Premium Coffee Bundle — embedded widget" },
-  { key: "HEADLESS", amount: parseUsdc("7.00").toString(), description: "Premium Coffee Bundle — headless checkout" },
+  { key: "HOSTED",   amount: parseUsdc("4.00").toString(), productName: "Premium Coffee Bundle", description: "Hosted checkout demo" },
+  { key: "EMBEDDED", amount: parseUsdc("5.00").toString(), productName: "Premium Coffee Bundle", description: "Embedded widget demo" },
+  { key: "HEADLESS", amount: parseUsdc("7.00").toString(), productName: "Premium Coffee Bundle", description: "Headless checkout demo" },
 ];
 
 // One plan per subscribe product. Same 5-minute demo cadence across all three.
@@ -107,9 +107,9 @@ async function main() {
   for (const link of LINKS) {
     const existing = await db.query(
       `SELECT "numericId" FROM "PaymentLink"
-       WHERE merchant = $1 AND amount = $2 AND description = $3
+       WHERE merchant = $1 AND amount = $2 AND "productName" = $3 AND description = $4
        ORDER BY "createdAt" ASC LIMIT 1`,
-      [MERCHANT, link.amount, link.description]
+      [MERCHANT, link.amount, link.productName, link.description]
     );
 
     let numericId;
@@ -119,9 +119,9 @@ async function main() {
     } else {
       numericId = snowflakeU64().toString();
       await db.query(
-        `INSERT INTO "PaymentLink" (id, "extId", "numericId", merchant, amount, description, "createdAt")
-         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())`,
-        [newId("plink"), numericId, MERCHANT, link.amount, link.description]
+        `INSERT INTO "PaymentLink" (id, "extId", "numericId", merchant, amount, "productName", description, "createdAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NOW())`,
+        [newId("plink"), numericId, MERCHANT, link.amount, link.productName, link.description]
       );
       console.log(`✓ Link ${link.key.padEnd(8)} #${numericId}  created`);
     }

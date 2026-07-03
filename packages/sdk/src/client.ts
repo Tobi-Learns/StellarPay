@@ -42,6 +42,7 @@ export class StellarPayClient {
     numericId: string;
     merchant: string;
     amount: string;
+    productName: string;
     description?: string;
   }): Promise<PaymentLinkRecord> {
     return this._post("/api/payments", opts);
@@ -126,6 +127,8 @@ export class StellarPayClient {
     onChainId: string;
     merchant: string;
     amount: string;
+    productName?: string;
+    description?: string;
     interval: number;
     intervalLabel: string;
     intervalUnit: string;

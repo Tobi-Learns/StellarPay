@@ -12,14 +12,21 @@ export default function NewPlanPage() {
   const { address, signTransaction } = useWallet();
   const router = useRouter();
 
+  const [productName, setProductName] = useState("");
   const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
   const [intervalIdx, setIntervalIdx] = useState(0);
   const [status, setStatus] = useState<"idle" | "signing" | "submitting" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!address || !amount) return;
+    if (!address) return;
+    if (!productName.trim() || !amount) {
+      setStatus("error");
+      setErrorMsg("Add a product or service name and amount.");
+      return;
+    }
 
     const stroops = parseUsdc(amount);
     const interval = INTERVALS[intervalIdx];
@@ -29,7 +36,6 @@ export default function NewPlanPage() {
     setErrorMsg("");
 
     try {
-      // Caller-supplied non-sequential id (Snowflake); the contract asserts uniqueness (3.2e).
       const planIdSnowflake = snowflakeU64();
       const xdr = await buildCreatePlanXdr(address, stroops, minSecs, planIdSnowflake);
       const signedXdr = await signTransaction(xdr);
@@ -43,6 +49,8 @@ export default function NewPlanPage() {
         onChainId,
         merchant: address,
         amount: stroops.toString(),
+        productName: productName.trim(),
+        description: description.trim(),
         interval: minSecs,
         intervalLabel: interval.label,
         intervalUnit: interval.unit,
@@ -52,11 +60,17 @@ export default function NewPlanPage() {
 
       savePlan(planData);
 
-      fetch("/api/plans", {
+      const res = await fetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(planData),
-      }).catch(() => {});
+      }).catch(() => null);
+
+      if (res && !res.ok) {
+        setStatus("error");
+        setErrorMsg("Plan was created on-chain, but could not be saved to the platform.");
+        return;
+      }
 
       router.push("/app/billing");
     } catch (err) {
@@ -65,61 +79,100 @@ export default function NewPlanPage() {
     }
   }
 
+  const interval = INTERVALS[intervalIdx];
   const busy = status === "signing" || status === "submitting";
 
   return (
-    <div className="max-w-lg">
-      <h1 className="text-xl font-semibold mb-6">New subscription plan</h1>
+    <div className="max-w-5xl">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold">New subscription plan</h1>
+        <p className="text-sm text-neutral-500 mt-1">Create a recurring checkout link for a product or service.</p>
+      </div>
 
       {!address ? (
         <p className="text-sm text-neutral-400">Connect your wallet first.</p>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Amount per cycle (USDC)</label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              placeholder="9.99"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
-            />
-          </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Product or service name</label>
+              <input
+                type="text"
+                placeholder="e.g. Coffee Club Subscription"
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                required
+                maxLength={80}
+                className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Billing interval</label>
-            <select
-              value={intervalIdx}
-              onChange={(e) => setIntervalIdx(Number(e.target.value))}
-              className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount per cycle (USDC)</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="9.99"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Billing interval</label>
+              <select
+                value={intervalIdx}
+                onChange={(e) => setIntervalIdx(Number(e.target.value))}
+                className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+              >
+                {INTERVALS.map((iv, i) => (
+                  <option key={iv.label} value={i}>{iv.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Description</label>
+              <textarea
+                placeholder="What does this subscription include?"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                maxLength={240}
+                rows={4}
+                className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 resize-none"
+              />
+            </div>
+
+            {status === "error" && (
+              <p className="text-xs text-red-500">{errorMsg}</p>
+            )}
+
+            <p className="text-xs text-neutral-400">
+              Merchant: <span className="font-mono">{address}</span>
+            </p>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full py-2.5 rounded-lg bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {INTERVALS.map((iv, i) => (
-                <option key={iv.label} value={i}>{iv.label}</option>
-              ))}
-            </select>
-          </div>
+              {status === "signing" && "Waiting for signature..."}
+              {status === "submitting" && "Creating plan on-chain..."}
+              {(status === "idle" || status === "error") && "Create plan"}
+            </button>
+          </form>
 
-          {status === "error" && (
-            <p className="text-xs text-red-500">{errorMsg}</p>
-          )}
-
-          <p className="text-xs text-neutral-400">
-            Merchant: <span className="font-mono">{address}</span>
-          </p>
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full py-2.5 rounded-lg bg-neutral-900 text-white text-sm font-medium hover:bg-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {status === "signing" && "Waiting for signature…"}
-            {status === "submitting" && "Creating plan on-chain…"}
-            {(status === "idle" || status === "error") && "Create plan"}
-          </button>
-        </form>
+          <aside className="rounded-lg border border-neutral-200 bg-white p-4 h-fit">
+            <p className="text-xs text-neutral-400 uppercase tracking-wide mb-3">Plan preview</p>
+            <p className="text-sm font-medium text-neutral-900">{productName.trim() || "Product or service name"}</p>
+            <p className="text-2xl font-semibold mt-2">{amount || "0.00"} USDC</p>
+            <p className="text-sm text-neutral-500 mt-1">{interval.label}</p>
+            {description.trim() && <p className="text-sm text-neutral-500 mt-3">{description.trim()}</p>}
+          </aside>
+        </div>
       )}
     </div>
   );

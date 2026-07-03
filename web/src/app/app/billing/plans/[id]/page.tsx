@@ -2,32 +2,31 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useWallet } from "@/lib/wallet-context";
 import { formatUsdc, truncateAddress } from "@/lib/stellar";
 
-type PaymentLinkDetail = {
-  id: string;
+type PlanDetail = {
   extId: string;
-  numericId: string;
+  onChainId: string;
   merchant: string;
   amount: string;
   productName: string;
   description?: string | null;
+  interval: number;
+  intervalLabel: string;
+  intervalUnit: string;
+  intervalCount: number;
   archivedAt?: string | null;
   createdAt: string;
-};
-
-type PaymentEvent = {
-  extId?: string;
-  txHash: string;
-  createdAt: string;
-  data: {
-    payerName?: string;
-    payerEmail?: string;
-    payerWallet?: string;
-    amount?: string;
-    linkId?: string;
-  };
+  subscriptions: Array<{
+    extId: string;
+    onChainId: string;
+    payerName?: string | null;
+    payerEmail?: string | null;
+    subscriber: string;
+    amount: string;
+    status: string;
+    createdAt: string;
+  }>;
 };
 
 function formatDateTime(value: string | number) {
@@ -37,40 +36,41 @@ function formatDateTime(value: string | number) {
   }).format(new Date(value));
 }
 
-export default function PaymentLinkManagePage({
+function statusPill(status: string) {
+  const classes = status === "Active"
+    ? "bg-green-50 text-green-700"
+    : status === "PastDue"
+      ? "bg-amber-50 text-amber-700"
+      : "bg-neutral-100 text-neutral-600";
+  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{status}</span>;
+}
+
+export default function PlanManagePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { address } = useWallet();
-  const [link, setLink] = useState<PaymentLinkDetail | null>(null);
-  const [events, setEvents] = useState<PaymentEvent[]>([]);
+  const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const hostedUrl = typeof window === "undefined" ? "" : `${window.location.origin}/pay/${id}`;
+  const subscribeUrl = typeof window === "undefined" ? "" : `${window.location.origin}/subscribe/${id}`;
   const explorerUrl = `https://stellar.expert/explorer/testnet/contract/${process.env.NEXT_PUBLIC_STELLARPAY_CONTRACT_ID ?? ""}`;
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/payments/${encodeURIComponent(id)}?includeArchived=1`)
+    fetch(`/api/plans/${encodeURIComponent(id)}`)
       .then((r) => r.ok ? r.json() : null)
-      .then(async (row: PaymentLinkDetail | null) => {
+      .then((row: PlanDetail | null) => {
         if (!active) return;
-        setLink(row);
+        setPlan(row);
         setProductName(row?.productName ?? "");
         setDescription(row?.description ?? "");
-        if (!row) return;
-        const enc = encodeURIComponent(row.numericId);
-        const allEvents = await fetch(`/api/events?paymentLinkId=${enc}&type=payment.settled`)
-          .then((r) => r.json())
-          .catch(() => []);
-        if (active && Array.isArray(allEvents)) setEvents(allEvents);
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -78,9 +78,9 @@ export default function PaymentLinkManagePage({
     return () => { active = false; };
   }, [id]);
 
-  const totalVolume = useMemo(() => {
-    return events.reduce((sum, event) => sum + BigInt(event.data.amount ?? link?.amount ?? "0"), BigInt(0));
-  }, [events, link?.amount]);
+  const activeSubscriptions = useMemo(() => {
+    return plan?.subscriptions.filter((sub) => sub.status === "Active").length ?? 0;
+  }, [plan?.subscriptions]);
 
   function copy(label: string, value: string) {
     navigator.clipboard.writeText(value);
@@ -89,9 +89,9 @@ export default function PaymentLinkManagePage({
   }
 
   async function saveEdits() {
-    if (!link) return;
+    if (!plan) return;
     setSaving(true);
-    const res = await fetch(`/api/payments/${encodeURIComponent(link.numericId)}`, {
+    const res = await fetch(`/api/plans/${encodeURIComponent(plan.onChainId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productName, description }),
@@ -99,17 +99,17 @@ export default function PaymentLinkManagePage({
 
     if (res?.ok) {
       const updated = await res.json();
-      setLink(updated);
+      setPlan((current) => current ? { ...current, ...updated, subscriptions: current.subscriptions } : current);
       setEditing(false);
     }
     setSaving(false);
   }
 
   async function toggleArchive() {
-    if (!link) return;
+    if (!plan) return;
     setSaving(true);
-    const archived = !link.archivedAt;
-    const res = await fetch(`/api/payments/${encodeURIComponent(link.numericId)}`, {
+    const archived = !plan.archivedAt;
+    const res = await fetch(`/api/plans/${encodeURIComponent(plan.onChainId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ archived }),
@@ -117,7 +117,7 @@ export default function PaymentLinkManagePage({
 
     if (res?.ok) {
       const updated = await res.json();
-      setLink(updated);
+      setPlan((current) => current ? { ...current, ...updated, subscriptions: current.subscriptions } : current);
     }
     setSaving(false);
   }
@@ -125,24 +125,24 @@ export default function PaymentLinkManagePage({
   return (
     <div className="max-w-6xl">
       <div className="flex items-center gap-2 mb-6">
-        <Link href="/app/payments" className="text-sm text-neutral-400 hover:text-neutral-700">
-          &larr; Payments
+        <Link href="/app/billing" className="text-sm text-neutral-400 hover:text-neutral-700">
+          &larr; Billing
         </Link>
         <span className="text-neutral-300">/</span>
-        <span className="text-sm font-mono">{link?.extId ?? id}</span>
+        <span className="text-sm font-mono">{plan?.extId ?? id}</span>
       </div>
 
       {loading ? (
-        <p className="text-sm text-neutral-400">Loading payment link...</p>
-      ) : !link ? (
-        <p className="text-sm text-neutral-500">Payment link not found.</p>
+        <p className="text-sm text-neutral-400">Loading plan...</p>
+      ) : !plan ? (
+        <p className="text-sm text-neutral-500">Plan not found.</p>
       ) : (
         <>
           <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-semibold">{link.productName}</h1>
+              <h1 className="text-2xl font-semibold">{plan.productName}</h1>
               <p className="text-sm text-neutral-500 mt-1">
-                {formatUsdc(BigInt(link.amount))} USDC · Created {formatDateTime(link.createdAt)}
+                {formatUsdc(BigInt(plan.amount))} USDC · {plan.intervalLabel} · Created {formatDateTime(plan.createdAt)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -157,14 +157,14 @@ export default function PaymentLinkManagePage({
                 disabled={saving}
                 className="text-sm px-4 py-2 rounded-lg border border-neutral-200 hover:bg-neutral-50 disabled:opacity-50 transition-colors"
               >
-                {link.archivedAt ? "Restore link" : "Archive link"}
+                {plan.archivedAt ? "Restore plan" : "Archive plan"}
               </button>
             </div>
           </div>
 
           {editing && (
             <div className="rounded-lg border border-neutral-200 bg-white p-5 mb-6">
-              <h2 className="text-sm font-medium text-neutral-900 mb-4">Edit payment link details</h2>
+              <h2 className="text-sm font-medium text-neutral-900 mb-4">Edit plan details</h2>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Product or service name</label>
@@ -199,15 +199,15 @@ export default function PaymentLinkManagePage({
           <div className="grid gap-4 lg:grid-cols-3 mb-6">
             <div className="rounded-lg border border-neutral-200 bg-white p-4">
               <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Status</p>
-              <p className="text-sm font-medium">{link.archivedAt ? "Archived" : "Active"}</p>
+              <p className="text-sm font-medium">{plan.archivedAt ? "Archived" : "Active"}</p>
             </div>
             <div className="rounded-lg border border-neutral-200 bg-white p-4">
-              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Recent purchases</p>
-              <p className="text-sm font-medium">{events.length}</p>
+              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Active subscriptions</p>
+              <p className="text-sm font-medium">{activeSubscriptions}</p>
             </div>
             <div className="rounded-lg border border-neutral-200 bg-white p-4">
-              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Total volume</p>
-              <p className="text-sm font-medium">{formatUsdc(totalVolume)} USDC</p>
+              <p className="text-xs text-neutral-400 uppercase tracking-wide mb-1">Total subscriptions</p>
+              <p className="text-sm font-medium">{plan.subscriptions.length}</p>
             </div>
           </div>
 
@@ -215,52 +215,54 @@ export default function PaymentLinkManagePage({
             <section className="space-y-6">
               <div className="rounded-lg border border-neutral-200 bg-white p-5">
                 <h2 className="text-sm font-medium text-neutral-900 mb-4">Details</h2>
-                <dl className="grid gap-3 text-sm sm:grid-cols-[170px_minmax(0,1fr)]">
+                <dl className="grid gap-3 text-sm sm:grid-cols-[180px_minmax(0,1fr)]">
                   <dt className="text-neutral-400">Product or service</dt>
-                  <dd>{link.productName}</dd>
-                  <dt className="text-neutral-400">Amount</dt>
-                  <dd>{formatUsdc(BigInt(link.amount))} USDC</dd>
-                  <dt className="text-neutral-400">Created</dt>
-                  <dd>{formatDateTime(link.createdAt)}</dd>
+                  <dd>{plan.productName}</dd>
+                  <dt className="text-neutral-400">Amount per cycle</dt>
+                  <dd>{formatUsdc(BigInt(plan.amount))} USDC</dd>
+                  <dt className="text-neutral-400">Billing interval</dt>
+                  <dd>{plan.intervalLabel}</dd>
+                  <dt className="text-neutral-400">Min interval seconds</dt>
+                  <dd>{plan.interval}</dd>
+                  <dt className="text-neutral-400">Unit count</dt>
+                  <dd>{plan.intervalCount} {plan.intervalUnit}</dd>
                   <dt className="text-neutral-400">Description</dt>
-                  <dd>{link.description || "No description"}</dd>
+                  <dd>{plan.description || "No description"}</dd>
                   <dt className="text-neutral-400">Merchant wallet</dt>
-                  <dd className="font-mono text-xs break-all">{link.merchant}</dd>
+                  <dd className="font-mono text-xs break-all">{plan.merchant}</dd>
                 </dl>
               </div>
 
               <div className="rounded-lg border border-neutral-200 bg-white p-5">
-                <h2 className="text-sm font-medium text-neutral-900 mb-4">Recent purchases</h2>
-                {events.length === 0 ? (
-                  <p className="text-sm text-neutral-400">No payments have settled through this link yet.</p>
+                <h2 className="text-sm font-medium text-neutral-900 mb-4">Attached subscriptions</h2>
+                {plan.subscriptions.length === 0 ? (
+                  <p className="text-sm text-neutral-400">No subscriptions are attached to this plan yet.</p>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[620px] text-sm">
+                    <table className="w-full min-w-[680px] text-sm">
                       <thead className="text-xs uppercase tracking-wide text-neutral-500">
                         <tr>
                           <th className="text-left font-medium py-2">Name</th>
                           <th className="text-left font-medium py-2">Email</th>
-                          <th className="text-left font-medium py-2">Amount</th>
-                          <th className="text-left font-medium py-2">Date</th>
-                          <th className="text-right font-medium py-2">Tx</th>
+                          <th className="text-left font-medium py-2">Created</th>
+                          <th className="text-left font-medium py-2">Status</th>
+                          <th className="text-right font-medium py-2">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-neutral-100">
-                        {events.map((event) => (
-                          <tr key={event.txHash}>
-                            <td className="py-3">{event.data.payerName ?? truncateAddress(event.data.payerWallet ?? "")}</td>
-                            <td className="py-3 text-neutral-600">{event.data.payerEmail || "Not provided"}</td>
-                            <td className="py-3">{formatUsdc(BigInt(event.data.amount ?? link.amount))} USDC</td>
-                            <td className="py-3 text-neutral-600">{formatDateTime(event.createdAt)}</td>
+                        {plan.subscriptions.map((sub) => (
+                          <tr key={sub.onChainId}>
+                            <td className="py-3">{sub.payerName ?? truncateAddress(sub.subscriber)}</td>
+                            <td className="py-3 text-neutral-600">{sub.payerEmail || "Not provided"}</td>
+                            <td className="py-3 text-neutral-600">{formatDateTime(sub.createdAt)}</td>
+                            <td className="py-3">{statusPill(sub.status)}</td>
                             <td className="py-3 text-right">
-                              <a
-                                href={`https://stellar.expert/explorer/testnet/tx/${event.txHash}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <Link
+                                href={`/app/billing/subscriptions/${sub.onChainId}`}
                                 className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
                               >
-                                View
-                              </a>
+                                Manage
+                              </Link>
                             </td>
                           </tr>
                         ))}
@@ -275,38 +277,35 @@ export default function PaymentLinkManagePage({
               <h2 className="text-sm font-medium text-neutral-900 mb-4">Integration</h2>
               <div className="space-y-4 text-sm">
                 <div>
-                  <p className="text-xs text-neutral-400 mb-1">Hosted URL</p>
-                  <p className="font-mono text-xs break-all mb-2">{hostedUrl}</p>
+                  <p className="text-xs text-neutral-400 mb-1">Hosted subscription URL</p>
+                  <p className="font-mono text-xs break-all mb-2">{subscribeUrl}</p>
                   <button
-                    onClick={() => copy("url", hostedUrl)}
+                    onClick={() => copy("url", subscribeUrl)}
                     className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
                   >
                     {copied === "url" ? "Copied!" : "Copy link"}
                   </button>
                 </div>
-
                 <div>
                   <p className="text-xs text-neutral-400 mb-1">Integration ID</p>
-                  <p className="font-mono text-xs break-all mb-2">{link.extId}</p>
+                  <p className="font-mono text-xs break-all mb-2">{plan.extId}</p>
                   <button
-                    onClick={() => copy("extId", link.extId)}
+                    onClick={() => copy("extId", plan.extId)}
                     className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
                   >
                     {copied === "extId" ? "Copied!" : "Copy ID"}
                   </button>
                 </div>
-
                 <div>
-                  <p className="text-xs text-neutral-400 mb-1">On-chain link ID</p>
-                  <p className="font-mono text-xs break-all mb-2">{link.numericId}</p>
+                  <p className="text-xs text-neutral-400 mb-1">On-chain plan ID</p>
+                  <p className="font-mono text-xs break-all mb-2">{plan.onChainId}</p>
                   <button
-                    onClick={() => copy("numericId", link.numericId)}
+                    onClick={() => copy("onChainId", plan.onChainId)}
                     className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
                   >
-                    {copied === "numericId" ? "Copied!" : "Copy on-chain ID"}
+                    {copied === "onChainId" ? "Copied!" : "Copy on-chain ID"}
                   </button>
                 </div>
-
                 <a
                   href={explorerUrl}
                   target="_blank"

@@ -3,7 +3,9 @@ export interface PaymentLink {
   extId?: string;      // plink_ + ULID — external handle (3.2); absent on localStorage-only rows
   merchant: string;    // Stellar address
   amount: string;      // stroops as string (BigInt serialised)
+  productName?: string;
   description: string;
+  archivedAt?: string | null;
   createdAt: number;
   url: string;
 }

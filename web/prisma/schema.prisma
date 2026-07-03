@@ -22,7 +22,9 @@ model PaymentLink {
   numericId   String   @unique  // Snowflake u64 — the canonical link id (URL param + contract link_id)
   merchant    String            // Stellar address
   amount      String            // stroops as string
+  productName String   @default("Untitled product or service")
   description String?
+  archivedAt  DateTime?
   createdAt   DateTime @default(now())
   events      Event[]
 }
@@ -33,10 +35,13 @@ model Plan {
   onChainId     String         @unique  // u64 as string returned from create_plan
   merchant      String
   amount        String
+  productName   String         @default("Untitled product or service")
+  description   String?
   interval      Int                     // min_interval_secs — the on-chain cadence floor
   intervalLabel String
   intervalUnit  String         @default("month")  // minute | day | week | month | year
   intervalCount Int            @default(1)
+  archivedAt    DateTime?
   createdAt     DateTime       @default(now())
   subscriptions Subscription[]
 }

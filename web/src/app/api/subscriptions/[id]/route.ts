@@ -9,9 +9,32 @@ export async function GET(
   const { id } = await params;
   const sub = await db.subscription.findUnique({
     where: { onChainId: id },
-    include: { plan: { select: { extId: true } } }, // for the plan_ cross-reference (3.2f)
+    include: {
+      plan: {
+        select: {
+          extId: true,
+          productName: true,
+          description: true,
+          intervalLabel: true,
+          intervalUnit: true,
+          intervalCount: true,
+        },
+      },
+    },
   });
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const events = await db.event.findMany({
+    where: {
+      OR: [
+        { subscriptionId: sub.id },
+        { data: { path: ["subId"], equals: id } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    select: { extId: true, type: true, txHash: true, data: true, createdAt: true },
+  });
 
   try {
     const onChain = await getSubscription(BigInt(id));
@@ -24,9 +47,10 @@ export async function GET(
       nextChargeAt: onChain.next_charge_at,
       estimatedNextChargeAt: new Date(onChain.next_charge_at * 1000).toISOString(),
       nextChargeOverdue: onChain.next_charge_at < nowSecs,
+      events,
     });
   } catch {
-    return NextResponse.json(sub);
+    return NextResponse.json({ ...sub, events });
   }
 }
 

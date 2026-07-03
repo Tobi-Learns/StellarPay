@@ -13,6 +13,7 @@ import * as rpc from "@stellar/stellar-sdk/rpc";
 import { db } from "@/lib/db";
 import { getSubscription } from "@/lib/stellar";
 import { deliverWebhook } from "@/lib/webhooks";
+import { newId } from "@/lib/ids";
 import { computeCatchUp, toUnixSeconds, type Interval, type IntervalUnit } from "@/lib/billing-schedule";
 
 const RPC_URL = "https://soroban-testnet.stellar.org";
@@ -208,6 +209,7 @@ export async function runChargePass(mode: ChargeMode) {
           const syntheticHash = `policy-cancel-${sub.onChainId}-${Date.now()}`;
           await db.event.create({
             data: {
+              extId: newId("evt"),
               type: "subscription.canceled",
               txHash: syntheticHash,
               subscriptionId: sub.id,
@@ -265,6 +267,7 @@ export async function runChargePass(mode: ChargeMode) {
         where: { txHash },
         update: {},
         create: {
+          extId: newId("evt"),
           type: eventType,
           txHash,
           subscriptionId: sub.id,

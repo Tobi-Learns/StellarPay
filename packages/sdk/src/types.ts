@@ -42,6 +42,7 @@ export interface Subscription {
 
 export interface PaymentLinkRecord {
   id: string;
+  extId: string;        // plink_ + ULID — the external handle (3.2)
   encodedId: string;
   numericId: string;
   merchant: string;
@@ -52,6 +53,7 @@ export interface PaymentLinkRecord {
 
 export interface PlanRecord {
   id: string;
+  extId: string;        // plan_ + ULID — the external handle (3.2)
   onChainId: string;
   merchant: string;
   amount: string;
@@ -64,6 +66,7 @@ export interface PlanRecord {
 
 export interface SubscriptionRecord {
   id: string;
+  extId: string;        // sub_ + ULID — the external handle (3.2)
   onChainId: string;
   planOnChainId: string;
   subscriber: string;

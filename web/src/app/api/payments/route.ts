@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { newId } from "@/lib/ids";
 
 export async function GET(req: NextRequest) {
   const merchant = req.nextUrl.searchParams.get("merchant");
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   const link = await db.paymentLink.upsert({
     where: { encodedId },
     update: {},
-    create: { encodedId, numericId, merchant, amount, description },
+    create: { extId: newId("plink"), encodedId, numericId, merchant, amount, description },
   });
   return NextResponse.json(link, { status: 201 });
 }

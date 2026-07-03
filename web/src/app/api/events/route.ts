@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { deliverWebhook } from "@/lib/webhooks";
+import { newId } from "@/lib/ids";
 
 export async function GET(req: NextRequest) {
   const subscriptionId = req.nextUrl.searchParams.get("subscriptionId");
@@ -52,13 +53,14 @@ export async function POST(req: NextRequest) {
   const event = await db.event.upsert({
     where: { txHash },
     update: {},
-    create: { type, txHash, paymentLinkId, subscriptionId, data: data ?? {} },
+    create: { extId: newId("evt"), type, txHash, paymentLinkId, subscriptionId, data: data ?? {} },
   });
 
-  // Fire-and-forget webhook delivery for qualifying event types
+  // Fire-and-forget webhook delivery for qualifying event types.
+  // The payload carries the evt_ id (3.2) so consumers can dedupe/reference it.
   if (WEBHOOK_TYPES.has(type)) {
     resolveMerchant({ type, paymentLinkId, subscriptionId, data }).then((merchant) => {
-      if (merchant) deliverWebhook(merchant, type, { txHash, ...data });
+      if (merchant) deliverWebhook(merchant, type, { id: event.extId, txHash, ...data });
     }).catch(() => {});
   }
 

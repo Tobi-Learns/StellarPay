@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { parseUsdc } from "@/lib/stellar";
 import { encodeLink, saveLink } from "@/lib/payment-links";
+import { snowflakeU64 } from "@/lib/ids";
 
 export default function NewPaymentPage() {
   const { address } = useWallet();
@@ -18,7 +19,9 @@ export default function NewPaymentPage() {
     e.preventDefault();
     if (!address || !amount) return;
 
-    const id = Date.now().toString();
+    // Snowflake u64 as the on-chain link_id — collision-safe, unlike the old
+    // Date.now() (two links in the same ms would collide). (3.2)
+    const id = snowflakeU64().toString();
     const data = {
       id,
       merchant: address,

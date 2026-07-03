@@ -18,8 +18,9 @@ model Merchant {
 
 model PaymentLink {
   id          String   @id @default(cuid())
+  extId       String   @unique  // plink_ + ULID — external API/dashboard handle (3.2)
   encodedId   String   @unique  // base64url blob used as the URL param
-  numericId   String            // timestamp-based ID passed to contract pay()
+  numericId   String            // Snowflake u64 (was Date.now()) passed to contract pay()
   merchant    String            // Stellar address
   amount      String            // stroops as string
   description String?
@@ -29,6 +30,7 @@ model PaymentLink {
 
 model Plan {
   id            String         @id @default(cuid())
+  extId         String         @unique  // plan_ + ULID — external API/dashboard handle (3.2)
   onChainId     String         @unique  // u64 as string returned from create_plan
   merchant      String
   amount        String
@@ -42,6 +44,7 @@ model Plan {
 
 model Subscription {
   id            String   @id @default(cuid())
+  extId         String   @unique  // sub_ + ULID — external API/dashboard handle (3.2)
   onChainId     String   @unique  // u64 as string returned from subscribe
   planOnChainId String
   plan          Plan     @relation(fields: [planOnChainId], references: [onChainId])
@@ -82,6 +85,7 @@ model ApiKey {
 
 model Event {
   id             String       @id @default(cuid())
+  extId          String       @unique  // evt_ + ULID — external/webhook event id (3.2)
   type           String       // payment.settled | subscription.created | subscription.charged | subscription.canceled
   txHash         String       @unique
   paymentLinkId  String?

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { newId } from "@/lib/ids";
 
 export async function GET(req: NextRequest) {
   const merchant = req.nextUrl.searchParams.get("merchant");
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
     where: { onChainId },
     update: {},
     create: {
+      extId: newId("sub"),
       onChainId,
       planOnChainId,
       subscriber,

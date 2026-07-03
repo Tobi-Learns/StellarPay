@@ -25,12 +25,12 @@ export default function BillingPage() {
     ]).then(([apiPlans, apiSubs]) => {
       setPlans(
         Array.isArray(apiPlans) && apiPlans.length > 0
-          ? apiPlans.map((p: { onChainId: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...p, createdAt: new Date(p.createdAt).getTime() }))
+          ? apiPlans.map((p: { extId: string; onChainId: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...p, createdAt: new Date(p.createdAt).getTime() }))
           : loadPlans().filter((p) => p.merchant === address)
       );
       setSubs(
         Array.isArray(apiSubs) && apiSubs.length > 0
-          ? apiSubs.map((s: { onChainId: string; planOnChainId: string; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...s, planId: s.planOnChainId, createdAt: new Date(s.createdAt).getTime() }))
+          ? apiSubs.map((s: { extId: string; onChainId: string; planOnChainId: string; subscriber: string; merchant: string; amount: string; interval: number; intervalLabel: string; createdAt: string }) => ({ ...s, planId: s.planOnChainId, createdAt: new Date(s.createdAt).getTime() }))
           : loadSubscriptions().filter((s) => s.merchant === address)
       );
     }).finally(() => setLoading(false));
@@ -77,7 +77,7 @@ export default function BillingPage() {
                   {formatUsdc(BigInt(plan.amount))} USDC / {plan.intervalLabel.split(" ")[0].toLowerCase()}
                 </p>
                 <p className="text-xs text-neutral-400 mt-0.5">
-                  Plan #{plan.onChainId} · {new Date(plan.createdAt).toLocaleDateString()}
+                  <span className="font-mono">{plan.extId ?? `plan #${plan.onChainId}`}</span> · {new Date(plan.createdAt).toLocaleDateString()}
                 </p>
               </div>
               <button

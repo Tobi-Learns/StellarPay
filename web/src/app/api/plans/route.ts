@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { newId } from "@/lib/ids";
 
 export async function GET(req: NextRequest) {
   const merchant = req.nextUrl.searchParams.get("merchant");
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   const plan = await db.plan.upsert({
     where: { onChainId },
     update: {},
-    create: { onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount },
+    create: { extId: newId("plan"), onChainId, merchant, amount, interval, intervalLabel, intervalUnit, intervalCount },
   });
   return NextResponse.json(plan, { status: 201 });
 }

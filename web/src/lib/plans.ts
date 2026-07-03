@@ -15,7 +15,8 @@ export function intervalOf(p: { intervalUnit: IntervalUnit; intervalCount: numbe
 }
 
 export interface StoredPlan {
-  onChainId: string;    // u64 as string
+  onChainId: string;    // u64 as string — on-chain id, used for routing/contract
+  extId?: string;       // plan_ + ULID — external handle shown in the dashboard (3.2); absent on localStorage-only rows
   merchant: string;
   amount: string;       // stroops
   interval: number;     // min_interval_secs — the on-chain cadence floor
@@ -28,7 +29,8 @@ export interface StoredPlan {
 }
 
 export interface StoredSubscription {
-  onChainId: string;    // sub ID u64 as string
+  onChainId: string;    // sub ID u64 as string — on-chain id, used for routing/contract
+  extId?: string;       // sub_ + ULID — external handle shown in the dashboard (3.2); absent on localStorage-only rows
   planId: string;       // plan ID u64 as string
   subscriber: string;
   merchant: string;

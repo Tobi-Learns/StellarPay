@@ -18,6 +18,9 @@ export {
 } from "./schedule";
 export type { Interval, IntervalUnit, CatchUp } from "./schedule";
 
+// Standardized resource IDs (3.2) — typed ULID external ids + Snowflake u64.
+export { ulid, newId, snowflakeU64 } from "./ids";
+
 // ── Utils ─────────────────────────────────────────────────────────────────────
 
 const USDC_DECIMALS = 7;

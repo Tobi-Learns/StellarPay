@@ -35,6 +35,7 @@ import {
   TESTNET,
   parseUsdc,
   minIntervalSeconds,
+  newId,
 } from "../packages/sdk/dist/index.js";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -110,10 +111,10 @@ async function main() {
   for (const link of LINKS) {
     const encodedId = encodeLink(link);
     await db.query(
-      `INSERT INTO "PaymentLink" (id, "encodedId", "numericId", merchant, amount, description, "createdAt")
-       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())
+      `INSERT INTO "PaymentLink" (id, "extId", "encodedId", "numericId", merchant, amount, description, "createdAt")
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT ("encodedId") DO NOTHING`,
-      [encodedId, link.numericId, MERCHANT, link.amount, link.description]
+      [newId("plink"), encodedId, link.numericId, MERCHANT, link.amount, link.description]
     );
     // Hosted redirects to /pay/:encodedId; embedded/headless pass numericId to the contract.
     env[`NEXT_PUBLIC_DEMO_CHECKOUT_${link.key}`] = link.key === "HOSTED" ? encodedId : link.numericId;
@@ -145,10 +146,10 @@ async function main() {
       onChainId = String(returnValue);
 
       await db.query(
-        `INSERT INTO "Plan" (id, "onChainId", merchant, amount, interval, "intervalLabel", "intervalUnit", "intervalCount", "createdAt")
-         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, NOW())
+        `INSERT INTO "Plan" (id, "extId", "onChainId", merchant, amount, interval, "intervalLabel", "intervalUnit", "intervalCount", "createdAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
          ON CONFLICT ("onChainId") DO NOTHING`,
-        [onChainId, MERCHANT, plan.amount, minSecs, INTERVAL_LABEL, INTERVAL.unit, INTERVAL.count]
+        [newId("plan"), onChainId, MERCHANT, plan.amount, minSecs, INTERVAL_LABEL, INTERVAL.unit, INTERVAL.count]
       );
       console.log(`✓ Plan ${plan.key.padEnd(8)} #${onChainId}  created (${plan.amount} stroops)`);
     }

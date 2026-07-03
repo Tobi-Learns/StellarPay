@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
-// Pre-provisioned link (encodedId) from the seed — see scripts/seed-test-merchant.mjs.
-const LINK_ENCODED_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_HOSTED ?? "";
+// Pre-provisioned link id (numericId) from the seed — see scripts/seed-test-merchant.mjs.
+const LINK_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_HOSTED ?? "";
 
 type State = "redirecting" | "error";
 
@@ -14,13 +14,13 @@ export default function HostedCheckoutPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!LINK_ENCODED_ID) {
+    if (!LINK_ID) {
       setError("Demo catalog not configured — set NEXT_PUBLIC_DEMO_CHECKOUT_HOSTED (run scripts/seed-test-merchant.mjs).");
       setState("error");
       return;
     }
-    // The merchant already provisioned this link; just hand off to hosted checkout.
-    window.location.assign(`${API_BASE}/pay/${LINK_ENCODED_ID}`);
+    // The merchant already provisioned this link; hand off to hosted checkout by id.
+    window.location.assign(`${API_BASE}/pay/${LINK_ID}`);
   }, []);
 
   return (

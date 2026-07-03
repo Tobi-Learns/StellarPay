@@ -6,7 +6,8 @@ export async function GET(
   { params }: { params: Promise<{ linkId: string }> }
 ) {
   const { linkId } = await params;
-  const link = await db.paymentLink.findUnique({ where: { encodedId: linkId } });
+  // The link IS the numericId now (3.2 ids change). encodedId is retired.
+  const link = await db.paymentLink.findUnique({ where: { numericId: linkId } });
   if (!link) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(link);
 }

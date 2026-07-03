@@ -8,12 +8,14 @@ import {
   getCurrentLedger,
   buildApproveXdr,
   buildSubscribeXdr,
+  submitAndWait,
   submitAndWaitWithResult,
   formatUsdc,
   truncateAddress,
   type Plan,
 } from "@/lib/stellar";
 import { saveSubscription } from "@/lib/plans";
+import { snowflakeU64 } from "@/lib/ids";
 import {
   firstNextChargeAt,
   toUnixSeconds,
@@ -116,11 +118,13 @@ export default function SubscribeCheckoutPage({
       setStep("subscribing");
       const anchor = new Date();
       const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, interval));
-      const subscribeXdr = await buildSubscribeXdr(address, BigInt(planId), nextChargeAt);
+      // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
+      const subIdSnowflake = snowflakeU64();
+      const subscribeXdr = await buildSubscribeXdr(address, BigInt(planId), nextChargeAt, subIdSnowflake);
       const signedSubscribe = await signTransaction(subscribeXdr);
-      const { hash: subscribeTxHash, returnValue } = await submitAndWaitWithResult(signedSubscribe);
+      const subscribeTxHash = await submitAndWait(signedSubscribe);
 
-      const subId = String(returnValue as bigint);
+      const subId = subIdSnowflake.toString();
 
       const subData = {
         onChainId: subId,

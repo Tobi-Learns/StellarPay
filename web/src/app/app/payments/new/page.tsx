@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { parseUsdc } from "@/lib/stellar";
-import { encodeLink, saveLink } from "@/lib/payment-links";
+import { saveLink } from "@/lib/payment-links";
 import { snowflakeU64 } from "@/lib/ids";
 
 export default function NewPaymentPage() {
@@ -15,12 +15,12 @@ export default function NewPaymentPage() {
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!address || !amount) return;
 
-    // Snowflake u64 as the on-chain link_id — collision-safe, unlike the old
-    // Date.now() (two links in the same ms would collide). (3.2)
+    // Snowflake u64 as the canonical link id (URL param + on-chain link_id) —
+    // collision-safe, and the link IS this id now (no self-contained blob). (3.2)
     const id = snowflakeU64().toString();
     const data = {
       id,
@@ -30,18 +30,16 @@ export default function NewPaymentPage() {
       createdAt: Date.now(),
     };
 
-    const encoded = encodeLink(data);
-    const url = `${window.location.origin}/pay/${encoded}`;
+    const url = `${window.location.origin}/pay/${id}`;
 
-    saveLink({ ...data, url });
-
-    // Write-through to DB (fire-and-forget — link works without it)
-    fetch("/api/payments", {
+    // The DB row must exist before the link resolves (/pay looks it up by numericId).
+    await fetch("/api/payments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ encodedId: encoded, numericId: id, merchant: address, amount: data.amount, description: data.description }),
+      body: JSON.stringify({ numericId: id, merchant: address, amount: data.amount, description: data.description }),
     }).catch(() => {});
 
+    saveLink({ ...data, url });
     setLinkUrl(url);
   }
 

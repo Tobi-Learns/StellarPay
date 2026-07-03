@@ -8,7 +8,11 @@ import { decodeLink } from "@/lib/payment-links";
 
 interface MerchantProfile { displayName?: string | null; verified?: boolean }
 
-type DecodedPaymentLink = ReturnType<typeof decodeLink> & { numericId?: string };
+// The link IS the numericId now; the page looks it up in the DB (like /subscribe
+// resolves a plan by id), so the amount/merchant are server-authoritative, not
+// read from a tamperable URL blob. Old self-contained blob links still decode as
+// a fallback so anything shared before this change keeps working.
+type LinkData = { merchant: string; amount: string; numericId: string; description?: string };
 
 export default function CheckoutPage({
   params,
@@ -23,14 +27,31 @@ export default function CheckoutPage({
   const [merchant, setMerchant] = useState<MerchantProfile | null>(null);
   const [payerName, setPayerName] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
+  const [link, setLink] = useState<LinkData | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "invalid">("loading");
 
-  let link: DecodedPaymentLink | null = null;
-  let decodeError = false;
-  try {
-    link = decodeLink(linkId);
-  } catch {
-    decodeError = true;
-  }
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      // Primary: resolve the link by numericId from the DB.
+      try {
+        const res = await fetch(`/api/payments/${encodeURIComponent(linkId)}`);
+        if (res.ok) {
+          const row = await res.json() as { merchant: string; amount: string; numericId: string; description?: string | null };
+          if (active) { setLink({ merchant: row.merchant, amount: row.amount, numericId: row.numericId, description: row.description ?? undefined }); setLoadState("ready"); }
+          return;
+        }
+      } catch { /* fall through to legacy decode */ }
+      // Legacy fallback: old self-contained base64 blob links.
+      try {
+        const d = decodeLink(linkId);
+        if (active) { setLink({ merchant: d.merchant, amount: d.amount, numericId: String(d.id ?? ""), description: d.description }); setLoadState("ready"); }
+        return;
+      } catch { /* not a blob either */ }
+      if (active) setLoadState("invalid");
+    })();
+    return () => { active = false; };
+  }, [linkId]);
 
   useEffect(() => {
     if (!link) return;
@@ -38,10 +59,19 @@ export default function CheckoutPage({
       .then((r) => r.json())
       .then((m) => { if (!m.error) setMerchant(m); })
       .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [link?.merchant]);
 
-  if (decodeError || !link) {
+  if (loadState === "loading") {
+    return (
+      <div className="flex flex-1 items-center justify-center min-h-[calc(100vh-57px)]">
+        <div className="max-w-sm w-full mx-auto px-6 text-center">
+          <p className="text-sm text-neutral-400">Loading payment link…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadState === "invalid" || !link) {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[calc(100vh-57px)]">
         <div className="max-w-sm w-full mx-auto px-6 text-center">
@@ -65,10 +95,9 @@ export default function CheckoutPage({
     setErrorMsg("");
 
     try {
-      const linkNumericId = link.id ?? link.numericId;
-      if (!linkNumericId) throw new Error("Payment link is missing its numeric id.");
+      if (!link.numericId) throw new Error("Payment link is missing its numeric id.");
 
-      const xdr = await buildPayXdr(address, link.merchant, BigInt(link.amount), BigInt(linkNumericId));
+      const xdr = await buildPayXdr(address, link.merchant, BigInt(link.amount), BigInt(link.numericId));
       const signedTxXdr = await signTransaction(xdr);
 
       setStatus("submitting");
@@ -94,7 +123,7 @@ export default function CheckoutPage({
       const qs = new URLSearchParams({
         amount: amountDisplay,
         merchant: merchant?.displayName ?? link.merchant,
-        description: link.description,
+        description: link.description ?? "",
       });
       router.push(`/receipt/${txHash}?${qs.toString()}`);
     } catch (err) {

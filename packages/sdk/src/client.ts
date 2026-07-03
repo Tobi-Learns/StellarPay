@@ -35,11 +35,10 @@ export class StellarPayClient {
   // ── One-time payments ───────────────────────────────────────────────────────
 
   /**
-   * Register a payment link in the hosted DB. Call after generating the
-   * encodedId / numericId client-side (same encoding the hosted frontend uses).
+   * Register a payment link in the hosted DB. `numericId` is the canonical link
+   * id (a Snowflake) used both as the /pay URL param and the on-chain link_id.
    */
   async createPaymentLink(opts: {
-    encodedId: string;
     numericId: string;
     merchant: string;
     amount: string;
@@ -104,7 +103,8 @@ export class StellarPayClient {
   buildCreatePlanXdr(
     merchant: string,
     amount: bigint,
-    minIntervalSecs: number
+    minIntervalSecs: number,
+    planId: bigint
   ): Promise<string> {
     return buildTxXdr(this.cfg, merchant, this.contract.call(
       "create_plan",
@@ -112,6 +112,7 @@ export class StellarPayClient {
       new Address(this.cfg.sacAddress).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
       nativeToScVal(BigInt(minIntervalSecs), { type: "u64" }),
+      nativeToScVal(planId, { type: "u64" }),
     ));
   }
 
@@ -165,12 +166,13 @@ export class StellarPayClient {
    * with `firstNextChargeAt(anchor, interval)` then `toUnixSeconds`).
    * After signing and submitting, capture the returned subId and call registerSubscription().
    */
-  buildSubscribeXdr(subscriber: string, planId: bigint, nextChargeAt: number): Promise<string> {
+  buildSubscribeXdr(subscriber: string, planId: bigint, nextChargeAt: number, subId: bigint): Promise<string> {
     return buildTxXdr(this.cfg, subscriber, this.contract.call(
       "subscribe",
       new Address(subscriber).toScVal(),
       nativeToScVal(planId, { type: "u64" }),
       nativeToScVal(BigInt(nextChargeAt), { type: "u64" }),
+      nativeToScVal(subId, { type: "u64" }),
     ));
   }
 

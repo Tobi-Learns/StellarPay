@@ -23,8 +23,6 @@ impl StellarPayContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Platform, &platform);
         env.storage().instance().set(&DataKey::FeeBps, &fee_bps);
-        env.storage().instance().set(&DataKey::PlanCount, &0u64);
-        env.storage().instance().set(&DataKey::SubCount, &0u64);
     }
 
     /// One-time payment: payer signs once, merchant gets amount − fee, platform gets fee.
@@ -54,7 +52,9 @@ impl StellarPayContract {
             .publish((symbol_short!("pay"),), (payer, merchant, asset, amount, link_id));
     }
 
-    /// Create a recurring billing plan. Returns the plan ID.
+    /// Create a recurring billing plan. `plan_id` is caller-supplied (the backend
+    /// generates a non-sequential Snowflake), mirroring how `pay` takes `link_id`;
+    /// the contract only asserts it isn't already used. Returns the plan ID.
     /// `min_interval_secs` is the on-chain cadence floor (see `Plan`).
     pub fn create_plan(
         env: Env,
@@ -62,13 +62,16 @@ impl StellarPayContract {
         asset: Address,
         amount: i128,
         min_interval_secs: u64,
+        plan_id: u64,
     ) -> u64 {
         merchant.require_auth();
 
         assert!(min_interval_secs > 0, "interval must be positive");
         assert!(amount > 0, "amount must be positive");
-
-        let plan_id: u64 = env.storage().instance().get(&DataKey::PlanCount).unwrap();
+        assert!(
+            !env.storage().persistent().has(&DataKey::Plan(plan_id)),
+            "plan id already exists"
+        );
 
         let plan = Plan {
             id: plan_id,
@@ -82,9 +85,6 @@ impl StellarPayContract {
         env.storage()
             .persistent()
             .set(&DataKey::Plan(plan_id), &plan);
-        env.storage()
-            .instance()
-            .set(&DataKey::PlanCount, &(plan_id + 1));
 
         env.events()
             .publish((symbol_short!("plan"),), (merchant, plan_id));
@@ -97,7 +97,9 @@ impl StellarPayContract {
     /// `next_charge_at`, a UTC unix timestamp computed by the backend's calendar math.
     /// The contract enforces `next_charge_at >= now + min_interval_secs` so the first
     /// advance can't be shorter than the cadence floor. Returns the subscription ID.
-    pub fn subscribe(env: Env, subscriber: Address, plan_id: u64, next_charge_at: u64) -> u64 {
+    /// `sub_id` is caller-supplied (backend Snowflake), asserted unique — same
+    /// pattern as `create_plan`/`pay`, so subscription ids are non-sequential.
+    pub fn subscribe(env: Env, subscriber: Address, plan_id: u64, next_charge_at: u64, sub_id: u64) -> u64 {
         subscriber.require_auth();
 
         let plan: Plan = env
@@ -106,14 +108,16 @@ impl StellarPayContract {
             .get(&DataKey::Plan(plan_id))
             .expect("plan not found");
         assert!(plan.active, "plan not active");
+        assert!(
+            !env.storage().persistent().has(&DataKey::Sub(sub_id)),
+            "sub id already exists"
+        );
 
         let now = env.ledger().timestamp();
         assert!(
             next_charge_at >= now + plan.min_interval_secs,
             "next_charge_at below cadence floor"
         );
-
-        let sub_id: u64 = env.storage().instance().get(&DataKey::SubCount).unwrap();
 
         let mut sub = Subscription {
             id: sub_id,
@@ -130,9 +134,6 @@ impl StellarPayContract {
         env.storage()
             .persistent()
             .set(&DataKey::Sub(sub_id), &sub);
-        env.storage()
-            .instance()
-            .set(&DataKey::SubCount, &(sub_id + 1));
 
         env.events()
             .publish((symbol_short!("subscribe"),), (subscriber, plan_id, sub_id));

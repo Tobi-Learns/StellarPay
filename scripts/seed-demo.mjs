@@ -15,6 +15,7 @@ import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
+import { newId } from "../packages/sdk/dist/index.js";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
@@ -38,14 +39,6 @@ loadEnv(resolve(__dir, "../web/.env"));
 const MERCHANT = "GCCTHPUA2FAAX6WIS7GN4H2TAX4WTO3CI4PQWOIMWPHXE3MKEH2OG47L";
 const DEMO_AMOUNT = "100000000"; // 10 USDC in stroops
 
-function encodeLink(data) {
-  return Buffer.from(JSON.stringify(data))
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-}
-
 async function main() {
   const client = new pg.Client({ connectionString: process.env.TRANSACTION_URL });
   await client.connect();
@@ -64,24 +57,17 @@ async function main() {
   );
   console.log("✓ Merchant profile upserted");
 
-  // Create demo payment link
+  // Create demo payment link. numericId is the canonical link id (URL + link_id).
   const numericId = String(Date.now());
-  const linkData = {
-    id: numericId,
-    merchant: MERCHANT,
-    amount: DEMO_AMOUNT,
-    description: "Demo product — StellarPay",
-  };
-  const encodedId = encodeLink(linkData);
 
   await client.query(
-    `INSERT INTO "PaymentLink" ("id", "encodedId", "numericId", "merchant", "amount", "description", "createdAt")
+    `INSERT INTO "PaymentLink" ("id", "extId", "numericId", "merchant", "amount", "description", "createdAt")
      VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())
-     ON CONFLICT ("encodedId") DO NOTHING`,
-    [encodedId, numericId, MERCHANT, DEMO_AMOUNT, "Demo product — StellarPay"]
+     ON CONFLICT ("numericId") DO NOTHING`,
+    [newId("plink"), numericId, MERCHANT, DEMO_AMOUNT, "Demo product — StellarPay"]
   );
   console.log("✓ Demo payment link created");
-  console.log(`  /pay/${encodedId}`);
+  console.log(`  /pay/${numericId}`);
 
   await client.end();
   console.log("\nDone. For on-chain demo data (plans + subscriptions), use the app UI.");

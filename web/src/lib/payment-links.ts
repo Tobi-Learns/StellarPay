@@ -10,12 +10,8 @@ export interface PaymentLink {
 
 const STORAGE_KEY = "stellarpay_payment_links";
 
-export function encodeLink(data: Omit<PaymentLink, "url">): string {
-  const json = JSON.stringify(data);
-  // URL-safe base64 (no padding)
-  return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-}
-
+// Legacy decoder — kept only so old self-contained base64 blob links (shared
+// before the ids change) still resolve on /pay. New links are plain numericIds.
 export function decodeLink(encoded: string): Omit<PaymentLink, "url"> {
   const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);

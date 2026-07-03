@@ -131,10 +131,9 @@ const client = new StellarPayClient({ ...TESTNET, apiBase: "https://..." });`}</
         <H2 id="payments">One-time payments</H2>
         <H3>Create a payment link</H3>
         <Pre>{`const link = await client.createPaymentLink({
-  encodedId:   "base64url-id",  // URL-safe identifier → /pay/:encodedId
-  numericId:   String(Date.now()),
+  numericId:   snowflakeU64().toString(),  // canonical link id → /pay/:numericId
   merchant:    "G...",
-  amount:      "50000000",       // stroops (5 USDC)
+  amount:      "50000000",                 // stroops (5 USDC)
   description: "Coffee",
 });`}</Pre>
 
@@ -213,7 +212,7 @@ const subs = await client.listSubscriptions({ merchant: merchantAddress });`}</P
           rows={[
             ["GET",  "/api/payments?merchant=", "List payment links for a merchant"],
             ["POST", "/api/payments",           "Create a payment link"],
-            ["GET",  "/api/payments/:linkId",   "Get a single link by encodedId"],
+            ["GET",  "/api/payments/:linkId",   "Get a single link by numericId"],
           ]}
         />
 
@@ -329,7 +328,7 @@ interface Subscription {
 }
 
 // DB record types
-interface PaymentLinkRecord { id: string; encodedId: string; numericId: string;
+interface PaymentLinkRecord { id: string; extId: string; numericId: string;
   merchant: string; amount: string; description?: string; createdAt: string; }
 
 interface PlanRecord { id: string; onChainId: string; merchant: string;

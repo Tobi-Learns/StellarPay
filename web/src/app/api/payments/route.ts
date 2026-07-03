@@ -15,16 +15,17 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { encodedId, numericId, merchant, amount, description } = body;
+  const { numericId, merchant, amount, description } = body;
 
-  if (!encodedId || !numericId || !merchant || !amount) {
+  if (!numericId || !merchant || !amount) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // numericId is the canonical link id (Snowflake); encodedId is retired.
   const link = await db.paymentLink.upsert({
-    where: { encodedId },
+    where: { numericId },
     update: {},
-    create: { extId: newId("plink"), encodedId, numericId, merchant, amount, description },
+    create: { extId: newId("plink"), numericId, merchant, amount, description },
   });
   return NextResponse.json(link, { status: 201 });
 }

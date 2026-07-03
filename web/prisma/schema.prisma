@@ -19,8 +19,7 @@ model Merchant {
 model PaymentLink {
   id          String   @id @default(cuid())
   extId       String   @unique  // plink_ + ULID — external API/dashboard handle (3.2)
-  encodedId   String   @unique  // base64url blob used as the URL param
-  numericId   String            // Snowflake u64 (was Date.now()) passed to contract pay()
+  numericId   String   @unique  // Snowflake u64 — the canonical link id (URL param + contract link_id)
   merchant    String            // Stellar address
   amount      String            // stroops as string
   description String?

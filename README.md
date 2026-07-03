@@ -67,7 +67,7 @@ The button handles wallet connection, USDC trustline auto-setup, transaction bui
 
 | Contract | Address |
 |---|---|
-| StellarPay | `CAD3U6SL2ABFMX7GKFLTL7GQYDEGDEEPILYC26FCEKIGVQ5VCLCZ3CKG` |
+| StellarPay | `CARTSXUCSVFYXFY2IRS6376C2E63A7WNZD5EXZLIFZPU2NEWUGYM3CKR` |
 | Test USDC SAC | `CAKBCKBUE3ZRSNH6CDYAB62ZFWL7U7OX6NBZ6EUDFID22PRLICFJXHGS` |
 
 ## Running locally

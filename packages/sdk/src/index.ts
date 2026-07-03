@@ -44,7 +44,7 @@ import type { StellarPayConfig } from "./types";
 
 /** Ready-to-use config for the deployed testnet environment. */
 export const TESTNET: Omit<StellarPayConfig, "apiBase"> = {
-  contractId: "CAD3U6SL2ABFMX7GKFLTL7GQYDEGDEEPILYC26FCEKIGVQ5VCLCZ3CKG",
+  contractId: "CARTSXUCSVFYXFY2IRS6376C2E63A7WNZD5EXZLIFZPU2NEWUGYM3CKR",
   sacAddress: "CAKBCKBUE3ZRSNH6CDYAB62ZFWL7U7OX6NBZ6EUDFID22PRLICFJXHGS",
   rpcUrl: "https://soroban-testnet.stellar.org",
   horizonUrl: "https://horizon-testnet.stellar.org",

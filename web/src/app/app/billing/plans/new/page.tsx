@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
-import { buildCreatePlanXdr, submitAndWaitWithResult, parseUsdc } from "@/lib/stellar";
+import { buildCreatePlanXdr, submitAndWait, parseUsdc } from "@/lib/stellar";
 import { INTERVALS, savePlan } from "@/lib/plans";
 import { minIntervalSeconds } from "@/lib/billing-schedule";
+import { snowflakeU64 } from "@/lib/ids";
 
 export default function NewPlanPage() {
   const { address, signTransaction } = useWallet();
@@ -28,13 +29,15 @@ export default function NewPlanPage() {
     setErrorMsg("");
 
     try {
-      const xdr = await buildCreatePlanXdr(address, stroops, minSecs);
+      // Caller-supplied non-sequential id (Snowflake); the contract asserts uniqueness (3.2e).
+      const planIdSnowflake = snowflakeU64();
+      const xdr = await buildCreatePlanXdr(address, stroops, minSecs, planIdSnowflake);
       const signedXdr = await signTransaction(xdr);
 
       setStatus("submitting");
-      const { returnValue } = await submitAndWaitWithResult(signedXdr);
+      await submitAndWait(signedXdr);
 
-      const onChainId = String(returnValue as bigint);
+      const onChainId = planIdSnowflake.toString();
 
       const planData = {
         onChainId,

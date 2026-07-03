@@ -9,6 +9,7 @@ import {
   parseUsdc,
   firstNextChargeAt,
   toUnixSeconds,
+  snowflakeU64,
   type Interval,
 } from "@stellarpay/sdk";
 import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
@@ -124,10 +125,11 @@ export default function HeadlessSubscribePage() {
       setStep("subscribing");
       const anchor = new Date();
       const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
-      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt);
+      // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
+      const createdSubId = snowflakeU64();
+      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt, createdSubId);
       const signedSubscribeXdr = await sign(subscribeXdr, address);
-      const { returnValue } = await c.submitAndWaitWithResult(signedSubscribeXdr);
-      const createdSubId = returnValue as bigint;
+      await c.submitAndWait(signedSubscribeXdr);
       setSubId(createdSubId);
 
       setStep("registering");

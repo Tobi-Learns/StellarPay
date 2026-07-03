@@ -8,6 +8,7 @@ import {
   parseUsdc,
   firstNextChargeAt,
   toUnixSeconds,
+  snowflakeU64,
   type Interval,
 } from "@stellarpay/sdk";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
@@ -74,15 +75,14 @@ export default function SubscribeEmbeddedPage() {
       const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
       await c.submitAndWait(await sign(approveXdr, address));
 
-      // Step 2: Subscribe — first charge runs immediately on-chain
+      // Step 2: Subscribe — first charge runs immediately on-chain.
+      // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
       setStep("subscribing");
       const anchor = new Date();
       const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
-      const subscribeXdr = await c.buildSubscribeXdr(address, planId, nextChargeAt);
-      const { returnValue: subReturn } = await c.submitAndWaitWithResult(
-        await sign(subscribeXdr, address)
-      );
-      const id = subReturn as bigint;
+      const id = snowflakeU64();
+      const subscribeXdr = await c.buildSubscribeXdr(address, planId, nextChargeAt, id);
+      await c.submitAndWait(await sign(subscribeXdr, address));
       setSubId(id);
 
       const regRes = await fetch("/api/subscribe", {

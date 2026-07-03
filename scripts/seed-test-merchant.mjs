@@ -8,7 +8,7 @@
  * created inside a customer flow anymore.
  *
  * Idempotent:
- *   - Payment links have a deterministic encodedId → upsert is a no-op on re-run.
+ *   - Payment links are find-or-create by (merchant, amount, description); numericId is the link.
  *   - Plans are find-or-create keyed on (merchant, amount, interval) in the DB,
  *     because create_plan mints a fresh on-chain id every call. So a re-run after
  *     a DB reset that WIPED plans will mint new ones; a re-run that kept them
@@ -36,6 +36,7 @@ import {
   parseUsdc,
   minIntervalSeconds,
   newId,
+  snowflakeU64,
 } from "../packages/sdk/dist/index.js";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -74,12 +75,13 @@ const MERCHANT = "GCCTHPUA2FAAX6WIS7GN4H2TAX4WTO3CI4PQWOIMWPHXE3MKEH2OG47L";
 const INTERVAL = { unit: "minute", count: 5 };
 const INTERVAL_LABEL = "Demo (every 5 minutes)";
 
-// One reusable payment link per checkout product. Fixed numericIds (3101–3103)
-// keep the encodedId deterministic so re-runs upsert instead of duplicating.
+// One reusable payment link per checkout product. numericId (the on-chain
+// link_id) is a non-sequential Snowflake, generated on first create; re-runs
+// find the existing link by (merchant, amount, description) so they don't dup.
 const LINKS = [
-  { key: "HOSTED",   numericId: "3101", amount: parseUsdc("4.00").toString(), description: "Premium Coffee Bundle — hosted checkout" },
-  { key: "EMBEDDED", numericId: "3102", amount: parseUsdc("5.00").toString(), description: "Premium Coffee Bundle — embedded widget" },
-  { key: "HEADLESS", numericId: "3103", amount: parseUsdc("7.00").toString(), description: "Premium Coffee Bundle — headless checkout" },
+  { key: "HOSTED",   amount: parseUsdc("4.00").toString(), description: "Premium Coffee Bundle — hosted checkout" },
+  { key: "EMBEDDED", amount: parseUsdc("5.00").toString(), description: "Premium Coffee Bundle — embedded widget" },
+  { key: "HEADLESS", amount: parseUsdc("7.00").toString(), description: "Premium Coffee Bundle — headless checkout" },
 ];
 
 // One plan per subscribe product. Same 5-minute demo cadence across all three.
@@ -88,13 +90,6 @@ const PLANS = [
   { key: "EMBEDDED", amount: parseUsdc("2.00").toString() },
   { key: "HEADLESS", amount: parseUsdc("3.00").toString() },
 ];
-
-// Blob shape mirrors web /api ↔ /pay: `id` is the on-chain link_id the /pay page
-// reads (link.id ?? link.numericId). base64url matches the web decoder.
-function encodeLink({ numericId, amount, description }) {
-  const blob = { id: numericId, merchant: MERCHANT, amount, description, numericId };
-  return Buffer.from(JSON.stringify(blob)).toString("base64url");
-}
 
 async function main() {
   if (!process.env.TRANSACTION_URL) {
@@ -107,18 +102,31 @@ async function main() {
 
   const env = {};
 
-  // ── Payment links (DB-only, idempotent on encodedId) ────────────────────────
+  // ── Payment links (DB-only, find-or-create by merchant+amount+description) ───
+  // numericId is the canonical link id: the /pay URL param AND the on-chain link_id.
   for (const link of LINKS) {
-    const encodedId = encodeLink(link);
-    await db.query(
-      `INSERT INTO "PaymentLink" (id, "extId", "encodedId", "numericId", merchant, amount, description, "createdAt")
-       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT ("encodedId") DO NOTHING`,
-      [newId("plink"), encodedId, link.numericId, MERCHANT, link.amount, link.description]
+    const existing = await db.query(
+      `SELECT "numericId" FROM "PaymentLink"
+       WHERE merchant = $1 AND amount = $2 AND description = $3
+       ORDER BY "createdAt" ASC LIMIT 1`,
+      [MERCHANT, link.amount, link.description]
     );
-    // Hosted redirects to /pay/:encodedId; embedded/headless pass numericId to the contract.
-    env[`NEXT_PUBLIC_DEMO_CHECKOUT_${link.key}`] = link.key === "HOSTED" ? encodedId : link.numericId;
-    console.log(`✓ Link ${link.key.padEnd(8)} #${link.numericId}  (${link.amount} stroops)`);
+
+    let numericId;
+    if (existing.rows.length) {
+      numericId = existing.rows[0].numericId;
+      console.log(`✓ Link ${link.key.padEnd(8)} #${numericId}  reused`);
+    } else {
+      numericId = snowflakeU64().toString();
+      await db.query(
+        `INSERT INTO "PaymentLink" (id, "extId", "numericId", merchant, amount, description, "createdAt")
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())`,
+        [newId("plink"), numericId, MERCHANT, link.amount, link.description]
+      );
+      console.log(`✓ Link ${link.key.padEnd(8)} #${numericId}  created`);
+    }
+    // All three checkout flows now use the numericId (hosted redirects to /pay/:numericId).
+    env[`NEXT_PUBLIC_DEMO_CHECKOUT_${link.key}`] = numericId;
   }
 
   // ── Plans (on-chain create_plan, merchant-signed; find-or-create by DB row) ──
@@ -139,11 +147,13 @@ async function main() {
       onChainId = existing.rows[0].onChainId;
       console.log(`✓ Plan ${plan.key.padEnd(8)} #${onChainId}  reused  (${plan.amount} stroops)`);
     } else {
-      const xdr = await sdk.buildCreatePlanXdr(MERCHANT, BigInt(plan.amount), minSecs);
+      // Caller-supplied non-sequential plan id (Snowflake); contract asserts uniqueness (3.2e).
+      const planIdSf = snowflakeU64();
+      const xdr = await sdk.buildCreatePlanXdr(MERCHANT, BigInt(plan.amount), minSecs, planIdSf);
       const tx = TransactionBuilder.fromXDR(xdr, TESTNET.networkPassphrase);
       tx.sign(merchantKp);
-      const { returnValue } = await sdk.submitAndWaitWithResult(tx.toXDR());
-      onChainId = String(returnValue);
+      await sdk.submitAndWait(tx.toXDR());
+      onChainId = planIdSf.toString();
 
       await db.query(
         `INSERT INTO "Plan" (id, "extId", "onChainId", merchant, amount, interval, "intervalLabel", "intervalUnit", "intervalCount", "createdAt")

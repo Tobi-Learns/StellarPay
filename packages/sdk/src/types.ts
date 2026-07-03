@@ -43,8 +43,7 @@ export interface Subscription {
 export interface PaymentLinkRecord {
   id: string;
   extId: string;        // plink_ + ULID — the external handle (3.2)
-  encodedId: string;
-  numericId: string;
+  numericId: string;    // Snowflake u64 — the canonical link id (URL + contract link_id)
   merchant: string;
   amount: string;
   description?: string;

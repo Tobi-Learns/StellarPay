@@ -36,15 +36,14 @@ export default function PaymentsPage() {
       fetch(`/api/events?merchant=${enc}&type=payment.settled`).then((r) => r.json()).catch(() => []),
     ]).then(([rows, events]) => {
       if (Array.isArray(rows) && rows.length > 0) {
-        setLinks(rows.map((r: { extId: string; encodedId: string; numericId: string; merchant: string; amount: string; description: string | null; createdAt: string }) => ({
+        setLinks(rows.map((r: { extId: string; numericId: string; merchant: string; amount: string; description: string | null; createdAt: string }) => ({
           id: r.numericId,
           extId: r.extId,
-          encodedId: r.encodedId,
           merchant: r.merchant,
           amount: r.amount,
           description: r.description ?? "",
           createdAt: new Date(r.createdAt).getTime(),
-          url: `${window.location.origin}/pay/${r.encodedId}`,
+          url: `${window.location.origin}/pay/${r.numericId}`,
         })));
       } else {
         setLinks(loadLinks().filter((l) => l.merchant === address));

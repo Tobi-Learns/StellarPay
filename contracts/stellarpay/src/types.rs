@@ -42,8 +42,6 @@ pub enum DataKey {
     Admin,
     Platform,
     FeeBps,
-    PlanCount,
-    SubCount,
     Plan(u64),
     Sub(u64),
 }

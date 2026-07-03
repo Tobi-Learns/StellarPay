@@ -97,6 +97,9 @@
                 },
                 {
                   "u64": 2592000
+                },
+                {
+                  "u64": 7000000001
                 }
               ]
             }
@@ -149,10 +152,13 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
                 },
                 {
-                  "u64": 0
+                  "u64": 7000000001
                 },
                 {
                   "u64": 1702592000
+                },
+                {
+                  "u64": 8000000002
                 }
               ]
             }
@@ -205,7 +211,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "u64": 0
+                  "u64": 8000000002
                 },
                 {
                   "u32": 1
@@ -534,7 +540,7 @@
                   "symbol": "Plan"
                 },
                 {
-                  "u64": 0
+                  "u64": 7000000001
                 }
               ]
             },
@@ -554,7 +560,7 @@
                       "symbol": "Plan"
                     },
                     {
-                      "u64": 0
+                      "u64": 7000000001
                     }
                   ]
                 },
@@ -593,7 +599,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 7000000001
                       }
                     },
                     {
@@ -631,7 +637,7 @@
                   "symbol": "Sub"
                 },
                 {
-                  "u64": 0
+                  "u64": 8000000002
                 }
               ]
             },
@@ -651,7 +657,7 @@
                       "symbol": "Sub"
                     },
                     {
-                      "u64": 0
+                      "u64": 8000000002
                     }
                   ]
                 },
@@ -671,7 +677,7 @@
                         "symbol": "id"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 8000000002
                       }
                     },
                     {
@@ -687,7 +693,7 @@
                         "symbol": "plan_id"
                       },
                       "val": {
-                        "u64": 0
+                        "u64": 7000000001
                       }
                     },
                     {
@@ -770,36 +776,12 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "PlanCount"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u64": 1
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
                               "symbol": "Platform"
                             }
                           ]
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "SubCount"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u64": 1
                         }
                       }
                     ]

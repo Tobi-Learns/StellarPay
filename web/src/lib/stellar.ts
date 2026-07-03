@@ -193,7 +193,8 @@ export function buildPayXdr(
 export function buildCreatePlanXdr(
   merchant: string,
   amount: bigint,
-  minIntervalSecs: number
+  minIntervalSecs: number,
+  planId: bigint
 ): Promise<string> {
   return buildTxXdr(
     merchant,
@@ -202,7 +203,8 @@ export function buildCreatePlanXdr(
       new Address(merchant).toScVal(),
       new Address(TEST_USDC).toScVal(),
       nativeToScVal(amount, { type: "i128" }),
-      nativeToScVal(BigInt(minIntervalSecs), { type: "u64" })
+      nativeToScVal(BigInt(minIntervalSecs), { type: "u64" }),
+      nativeToScVal(planId, { type: "u64" })
     )
   );
 }
@@ -210,7 +212,8 @@ export function buildCreatePlanXdr(
 export function buildSubscribeXdr(
   subscriber: string,
   planId: bigint,
-  nextChargeAt: number
+  nextChargeAt: number,
+  subId: bigint
 ): Promise<string> {
   return buildTxXdr(
     subscriber,
@@ -218,7 +221,8 @@ export function buildSubscribeXdr(
       "subscribe",
       new Address(subscriber).toScVal(),
       nativeToScVal(planId, { type: "u64" }),
-      nativeToScVal(BigInt(nextChargeAt), { type: "u64" })
+      nativeToScVal(BigInt(nextChargeAt), { type: "u64" }),
+      nativeToScVal(subId, { type: "u64" })
     )
   );
 }

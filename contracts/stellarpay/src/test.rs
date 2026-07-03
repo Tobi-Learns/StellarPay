@@ -22,6 +22,10 @@ struct TestEnv {
 const FEE_BPS: u32 = 100; // 1%
 const INTERVAL: u64 = 2_592_000; // 30 days in seconds — the plan's min_interval_secs
 const BASE_TS: u64 = 1_700_000_000; // fixed base so timestamp math is realistic
+// Caller-supplied ids (backend uses a non-sequential Snowflake; fixed here). Plan
+// and Sub are separate storage namespaces, so the same numeric value can't clash.
+const PLAN_ID: u64 = 7_000_000_001;
+const SUB_ID: u64 = 8_000_000_002;
 
 fn setup() -> TestEnv {
     let env = Env::default();
@@ -118,20 +122,31 @@ fn pay_zero_fee_works() {
 // ── create_plan ───────────────────────────────────────────────────────────────
 
 #[test]
-fn create_plan_returns_sequential_ids() {
+fn create_plan_echoes_supplied_id() {
     let t = setup();
     let c = client(&t);
-    let id0 = c.create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
-    let id1 = c.create_plan(&t.merchant, &t.asset, &200_0000000, &INTERVAL);
-    assert_eq!(id0, 0);
-    assert_eq!(id1, 1);
+    // ids are whatever the caller supplies — not a sequential counter
+    let id_a = c.create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &4242);
+    let id_b = c.create_plan(&t.merchant, &t.asset, &200_0000000, &INTERVAL, &9999);
+    assert_eq!(id_a, 4242);
+    assert_eq!(id_b, 9999);
+    assert_eq!(c.get_plan(&4242).amount, 100_0000000);
+    assert_eq!(c.get_plan(&9999).amount, 200_0000000);
+}
+
+#[test]
+#[should_panic(expected = "plan id already exists")]
+fn create_plan_duplicate_id_panics() {
+    let t = setup();
+    client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
+    client(&t).create_plan(&t.merchant, &t.asset, &200_0000000, &INTERVAL, &PLAN_ID);
 }
 
 #[test]
 fn create_plan_stores_correctly() {
     let t = setup();
     let amount = 50_0000000_i128;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
     let plan = client(&t).get_plan(&plan_id);
     assert_eq!(plan.merchant, t.merchant);
     assert_eq!(plan.amount, amount);
@@ -143,14 +158,14 @@ fn create_plan_stores_correctly() {
 #[should_panic(expected = "interval must be positive")]
 fn create_plan_zero_interval_panics() {
     let t = setup();
-    client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &0);
+    client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &0, &PLAN_ID);
 }
 
 #[test]
 #[should_panic(expected = "amount must be positive")]
 fn create_plan_zero_amount_panics() {
     let t = setup();
-    client(&t).create_plan(&t.merchant, &t.asset, &0, &INTERVAL);
+    client(&t).create_plan(&t.merchant, &t.asset, &0, &INTERVAL, &PLAN_ID);
 }
 
 // ── subscribe ─────────────────────────────────────────────────────────────────
@@ -160,12 +175,12 @@ fn subscribe_runs_first_charge() {
     let t = setup();
     let amount = 100_0000000_i128;
     let fee = amount * FEE_BPS as i128 / 10000;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
 
     let sub_before = token(&t).balance(&t.subscriber);
     approve(&t, amount * 10);
 
-    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     assert_eq!(token(&t).balance(&t.merchant), amount - fee);
     assert_eq!(token(&t).balance(&t.platform), fee);
@@ -175,11 +190,11 @@ fn subscribe_runs_first_charge() {
 #[test]
 fn subscribe_sets_next_charge() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
 
     let next = now(&t) + INTERVAL;
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &next);
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &next, &SUB_ID);
     let sub = client(&t).get_subscription(&sub_id);
 
     assert_eq!(sub.next_charge_at, next);
@@ -190,10 +205,21 @@ fn subscribe_sets_next_charge() {
 #[should_panic(expected = "next_charge_at below cadence floor")]
 fn subscribe_below_floor_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
     // next_charge_at only 1 second out — below the min interval
-    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + 1));
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + 1), &SUB_ID);
+}
+
+#[test]
+#[should_panic(expected = "sub id already exists")]
+fn subscribe_duplicate_id_panics() {
+    let t = setup();
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
+    approve(&t, 100_0000000 * 100);
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
+    // second subscribe re-using the same sub id — rejected before charging
+    client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 }
 
 // ── charge ────────────────────────────────────────────────────────────────────
@@ -203,9 +229,9 @@ fn charge_pulls_without_subscriber_signing() {
     let t = setup();
     let amount = 100_0000000_i128;
     let fee = amount * FEE_BPS as i128 / 10000;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
     approve(&t, amount * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     advance_secs(&t, INTERVAL);
 
@@ -225,9 +251,9 @@ fn charge_pulls_without_subscriber_signing() {
 #[test]
 fn charge_advances_next_charge() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     advance_secs(&t, INTERVAL);
     let next = now(&t) + INTERVAL;
@@ -241,9 +267,9 @@ fn charge_advances_next_charge() {
 fn charge_by_admin_works() {
     let t = setup();
     let amount = 100_0000000_i128;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
     approve(&t, amount * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     advance_secs(&t, INTERVAL);
     let merchant_before = token(&t).balance(&t.merchant);
@@ -260,9 +286,9 @@ fn charge_multi_period_pulls_arrears() {
     let t = setup();
     let amount = 100_0000000_i128;
     let fee_total = (amount * 3) * FEE_BPS as i128 / 10000;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
     approve(&t, amount * 100);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     let merchant_before = token(&t).balance(&t.merchant);
     let subscriber_before = token(&t).balance(&t.subscriber);
@@ -282,9 +308,9 @@ fn charge_multi_period_pulls_arrears() {
 #[should_panic(expected = "charge not due yet")]
 fn charge_before_due_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     // Do not advance the clock — charge not due yet
     client(&t).charge(&t.merchant, &sub_id, &1, &(now(&t) + INTERVAL * 2));
 }
@@ -293,9 +319,9 @@ fn charge_before_due_panics() {
 #[should_panic(expected = "periods must be >= 1")]
 fn charge_zero_periods_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     advance_secs(&t, INTERVAL);
     client(&t).charge(&t.merchant, &sub_id, &0, &(now(&t) + INTERVAL));
 }
@@ -304,9 +330,9 @@ fn charge_zero_periods_panics() {
 #[should_panic(expected = "too many periods for elapsed time")]
 fn charge_too_many_periods_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 100);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     // Only one interval elapses, but caller tries to bill 3 periods
     advance_secs(&t, INTERVAL);
     client(&t).charge(&t.merchant, &sub_id, &3, &(now(&t) + INTERVAL * 3));
@@ -316,9 +342,9 @@ fn charge_too_many_periods_panics() {
 #[should_panic(expected = "advance below cadence floor")]
 fn charge_below_cadence_floor_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 100);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     // Three periods elapse and caller bills 3, but only advances the schedule by ~1 interval
     advance_secs(&t, INTERVAL * 3);
     let due = client(&t).get_subscription(&sub_id).next_charge_at;
@@ -330,9 +356,9 @@ fn charge_below_cadence_floor_panics() {
 fn charge_by_stranger_panics() {
     let t = setup();
     let stranger = Address::generate(&t.env);
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     advance_secs(&t, INTERVAL);
     client(&t).charge(&stranger, &sub_id, &1, &(now(&t) + INTERVAL));
 }
@@ -341,9 +367,9 @@ fn charge_by_stranger_panics() {
 fn charge_sets_past_due_on_insufficient_allowance() {
     let t = setup();
     let amount = 100_0000000_i128;
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &amount, &INTERVAL, &PLAN_ID);
     approve(&t, amount * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     // Zero out allowance so the next charge fails
     token(&t).approve(&t.subscriber, &t.contract, &0, &(t.env.ledger().sequence() + 1000));
@@ -360,9 +386,9 @@ fn charge_sets_past_due_on_insufficient_allowance() {
 #[test]
 fn cancel_sets_status() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     client(&t).cancel(&t.subscriber, &sub_id);
 
@@ -374,9 +400,9 @@ fn cancel_sets_status() {
 #[should_panic(expected = "subscription not active")]
 fn charge_after_cancel_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
 
     client(&t).cancel(&t.subscriber, &sub_id);
 
@@ -388,9 +414,9 @@ fn charge_after_cancel_panics() {
 #[should_panic(expected = "already canceled")]
 fn cancel_twice_panics() {
     let t = setup();
-    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL);
+    let plan_id = client(&t).create_plan(&t.merchant, &t.asset, &100_0000000, &INTERVAL, &PLAN_ID);
     approve(&t, 100_0000000 * 10);
-    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL));
+    let sub_id = client(&t).subscribe(&t.subscriber, &plan_id, &(now(&t) + INTERVAL), &SUB_ID);
     client(&t).cancel(&t.subscriber, &sub_id);
     client(&t).cancel(&t.subscriber, &sub_id);
 }

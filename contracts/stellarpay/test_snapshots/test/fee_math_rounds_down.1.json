@@ -378,36 +378,12 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "PlanCount"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u64": 0
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
                               "symbol": "Platform"
                             }
                           ]
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "SubCount"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "u64": 0
                         }
                       }
                     ]

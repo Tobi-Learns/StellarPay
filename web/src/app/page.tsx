@@ -53,8 +53,11 @@ export default function Home() {
             <h1 className="max-w-3xl text-5xl font-semibold leading-[0.98] tracking-normal text-white sm:text-7xl lg:text-8xl">
               StellarPay
             </h1>
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-white/78 sm:text-xl">
-              Accept one-time and recurring payments in Stellar assets with hosted checkout links, an embeddable React button, or a headless SDK.
+            <p className="mt-7 max-w-2xl text-xl font-medium leading-9 text-white sm:text-2xl">
+              Turn every wallet into an online bank account.
+            </p>
+            <p className="mt-5 max-w-xl border-l-2 border-[#8ee8d0] pl-4 text-sm font-medium leading-6 text-[#d8f7ee]/90 sm:text-base sm:leading-7">
+              StellarPay bridges the adoption gap by letting customers pay, subscribe, and repay from wallets they own.
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -152,10 +155,10 @@ export default function Home() {
         <div>
           <p className="text-sm font-semibold text-[#217669]">Subscriptions without re-signing</p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
-            Recurring billing on a wallet-native rail.
+            Bank-Style Subscriptions for Wallets.
           </h2>
           <p className="mt-5 text-base leading-8 text-[#596461]">
-            Customers approve a capped allowance once. The platform admin key can then charge each billing cycle automatically, while the contract enforces cadence and fee rules.
+            StellarPay treats every connected wallet like an online bank account for subscriptions. Customers approve once, just like saving a card for recurring payments, then repayments run automatically each cycle with no repeat signatures and no manual follow-up.
           </p>
         </div>
         <div className="rounded-lg border border-[#d7ddd7] bg-white p-6 shadow-sm">

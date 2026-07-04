@@ -1,20 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  /* Off-white surfaces — the cool/blue tone lives here, subtle and low-chroma */
-  --background: #f9fbfe;
-  --sp-paper: #f8fafc;
-  --sp-mist: #eceff4;   /* nav active / hover / chip + pill backgrounds */
-  --sp-mint: #dee5ef;   /* focus ring, brand mark fill */
-  --sp-border: #e0e4eb;
-  /* Neutral ink + text — cool gray, no hue */
+  /* ── Cool-neutral scale (single hue ~218°, low chroma), ordered by lightness ──
+     Elevation reads correctly: white cards (100) sit ABOVE the canvas tint.
+       card surface .. #ffffff  (literal white in components)
+       sidebar/paper  #fafcff  (near-white chrome)
+       canvas/page    #f4f7fc  (the cool off-white you see behind cards)
+       subtle fill    #edf1f8  (nav active, hover, chips, status pill bg)
+       stronger fill  #e1e8f3  (focus ring, brand mark fill)
+       border         #dce2ec  (card + control hairlines)
+       muted text     #5d6472
+       ink text       #0f1319                                              */
+  --background: #f4f7fc;
+  --sp-paper: #fafcff;
+  --sp-mist: #edf1f8;
+  --sp-mint: #e1e8f3;
+  --sp-border: #dce2ec;
   --foreground: #0f1319;
-  --sp-ink: #0e1218;
+  --sp-ink: #0f1319;
   --sp-forest: #1b2331;
-  --sp-muted: #5e6472;
-  /* Accent — original green, used sparingly (positive status + primary action) */
+  --sp-muted: #5d6472;
+  /* ── Accent (~10% of the UI): green, only on positive status + primary action ── */
   --sp-green: #217669;
-  --sp-teal: #7c8aa0;   /* brand mark dot, neutralized to cool slate */
+  --sp-teal: #7c8aa0;   /* brand mark dot — neutral cool slate */
 }
 
 @theme inline {

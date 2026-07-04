@@ -69,13 +69,14 @@ function Table({ headers, rows }: { headers: string[]; rows: string[][] }) {
   );
 }
 
-const sections: { id: string; label: string; content: React.ReactNode }[] = [
+const sections: { id: string; label: string; description: string; content: React.ReactNode }[] = [
   {
     id: "quickstart",
     label: "Quickstart",
+    description:
+      "Install the SDK and take your first payment in a few lines — build an unsigned XDR, have the payer's wallet sign it, and submit on-chain.",
     content: (
       <>
-        <H2>Quickstart</H2>
         <Pre>{`npm install @stellarpay/sdk @stellar/stellar-sdk`}</Pre>
         <Pre>{`import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
 
@@ -95,9 +96,10 @@ const hash   = await client.submitAndWait(signed);`}</Pre>
   {
     id: "client",
     label: "StellarPayClient",
+    description:
+      "Configure the client every SDK call runs through — network preset, API base, and the one-time USDC trustline setup.",
     content: (
       <>
-        <H2>StellarPayClient</H2>
         <P>All SDK functionality is accessed through a <Code>StellarPayClient</Code> instance.</P>
         <Pre>{`new StellarPayClient(config: StellarPayConfig)`}</Pre>
         <Table
@@ -126,9 +128,10 @@ if (trustlineXdr) await client.submitAndWait(await signWithWallet(trustlineXdr))
   {
     id: "payments",
     label: "One-time payments",
+    description:
+      "Accept a single payment three ways — hosted link, embedded button, or fully headless — all settling the same on-chain pay call.",
     content: (
       <>
-        <H2>One-time payments</H2>
         <P>Three integration patterns, simplest first. All settle the same <Code>pay</Code> contract call.</P>
 
         <H3>1 · Hosted link</H3>
@@ -186,9 +189,10 @@ await client.recordPaymentSettled({
   {
     id: "subscriptions",
     label: "Subscriptions",
+    description:
+      "Set up recurring billing on real calendar time: the subscriber approves a spending allowance once, then the platform charges each cycle automatically.",
     content: (
       <>
-        <H2>Subscriptions</H2>
         <P>Billing runs on real calendar time. A plan stores its interval as <Code>{"{ unit, count }"}</Code> (e.g. monthly); the contract only enforces a cadence floor (<Code>min_interval_secs</Code>) and the backend owns exact dates. After the subscriber approves a spending allowance once, the platform charges each cycle automatically — no further subscriber signature.</P>
 
         <H3>Create a plan</H3>
@@ -268,9 +272,10 @@ const sub  = await client.getSubscription(subId);
   {
     id: "identity",
     label: "Customer identity",
+    description:
+      "Attach the payer's name and email so purchases are identifiable on the merchant dashboard and in webhook payloads.",
     content: (
       <>
-        <H2>Customer identity</H2>
         <P>Attach who paid so it shows on the merchant dashboard and in webhook payloads. The fields are optional everywhere:</P>
         <Table
           headers={["Where", "Fields"]}
@@ -287,9 +292,10 @@ const sub  = await client.getSubscription(subId);
   {
     id: "rest-api",
     label: "REST API",
+    description:
+      "The HTTP endpoints behind the SDK for creating and listing payment links, plans, subscriptions, events, and API keys.",
     content: (
       <>
-        <H2>REST API</H2>
         <P>All endpoints are relative to your <Code>apiBase</Code>. Request and response bodies are JSON.</P>
 
         <H3>Payment links</H3>
@@ -361,9 +367,10 @@ const sub  = await client.getSubscription(subId);
   {
     id: "webhooks",
     label: "Webhooks",
+    description:
+      "Receive signed, real-time events when payments settle and subscriptions charge, go past due, or cancel.",
     content: (
       <>
-        <H2>Webhooks</H2>
         <P>StellarPay signs every delivery with <Code>HMAC-SHA256</Code>. Verify the signature before processing.</P>
 
         <H3>Event types</H3>
@@ -410,9 +417,10 @@ function verifySignature(rawBody: string, header: string, secret: string): boole
   {
     id: "ids",
     label: "Resource IDs",
+    description:
+      "How StellarPay identifies objects — external typed ids for your app and API, and on-chain Snowflake ids for the contract.",
     content: (
       <>
-        <H2>Resource IDs</H2>
         <P>Two ID planes. Don&apos;t mix them:</P>
         <Table
           headers={["Plane", "Format", "Used by"]}
@@ -428,9 +436,10 @@ function verifySignature(rawBody: string, header: string, secret: string): boole
   {
     id: "types",
     label: "Types",
+    description:
+      "The TypeScript shapes accepted and returned across the SDK — config, records, and enums.",
     content: (
       <>
-        <H2>Types</H2>
         <Pre>{`// SDK config
 interface StellarPayConfig {
   apiBase:           string;
@@ -504,9 +513,10 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
   {
     id: "limitations",
     label: "Limitations & mobile",
+    description:
+      "What's supported today — Freighter browser signing — and what's coming next, including mobile and QR checkout.",
     content: (
       <>
-        <H2>Limitations &amp; mobile</H2>
         <Note>
           <strong>Signing is browser-wallet only today.</strong> The SDK returns unsigned XDR and you bring the signature — the current supported path is <Code>Freighter</Code> in a desktop browser. The hosted checkout pages require a browser wallet too.
         </Note>
@@ -561,9 +571,10 @@ export default function DocsPage() {
       {/* White content — fills from the sidebar edge to the far right */}
       <div className="min-w-0 flex-1 bg-white px-6 py-8 sm:px-8 lg:px-12 lg:py-10">
         <div className="max-w-3xl">
-          <h1 className="mb-2 text-2xl font-bold text-[var(--sp-ink)]">StellarPay Developer Docs</h1>
-          <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API. Non-custodial and wallet-to-wallet — the SDK builds unsigned XDR, your user&apos;s wallet signs, and settlement happens on-chain.</P>
-          <div className="mt-8">{current.content}</div>
+          <p className="mb-2 text-sm font-semibold text-[var(--sp-muted)]">Documentation</p>
+          <h1 className="mb-3 text-3xl font-bold tracking-tight text-[var(--sp-ink)]">{current.label}</h1>
+          <p className="text-base leading-relaxed text-[var(--sp-muted)]">{current.description}</p>
+          <div className="mt-10">{current.content}</div>
         </div>
       </div>
     </div>

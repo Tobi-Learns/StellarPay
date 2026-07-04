@@ -530,38 +530,41 @@ export default function DocsPage() {
   const current = sections.find((s) => s.id === active) ?? sections[0];
 
   return (
-    <div className="flex max-w-6xl mx-auto pl-4 pr-8 gap-10" style={{ paddingTop: "2rem", paddingBottom: "3rem" }}>
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col lg:flex-row">
 
-      {/* Tab rail */}
-      <aside className="w-48 shrink-0">
-        <div className="sticky top-8">
-          <p className="text-xs font-semibold text-neutral-400 uppercase tracking-wide mb-3">Documentation</p>
-          <nav className="flex flex-col gap-0.5">
-            {sections.map(({ id, label }) => {
-              const isActive = id === active;
-              return (
-                <button
-                  key={id}
-                  onClick={() => setActive(id)}
-                  className={`text-left text-sm rounded-md px-3 py-1.5 transition-colors border-l-2 ${
-                    isActive
-                      ? "border-neutral-900 text-neutral-900 font-medium bg-neutral-100"
-                      : "border-transparent text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50"
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+      {/* Full-height section sidebar */}
+      <aside className="border-b border-[var(--sp-border)] bg-[var(--sp-paper)] px-4 py-3 lg:sticky lg:top-16 lg:h-[calc(100vh-4rem)] lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:py-8">
+        <p className="hidden px-3 pb-3 text-[11px] font-semibold uppercase tracking-wider text-[var(--sp-muted)]/70 lg:block">
+          Documentation
+        </p>
+        <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:gap-0.5 lg:overflow-visible">
+          {sections.map(({ id, label }) => {
+            const isActive = id === active;
+            return (
+              <button
+                key={id}
+                onClick={() => setActive(id)}
+                aria-current={isActive ? "page" : undefined}
+                className={`min-w-max rounded-md px-3 py-2 text-left text-sm transition-colors lg:min-w-0 ${
+                  isActive
+                    ? "bg-[var(--sp-mist)] font-medium text-[var(--sp-ink)]"
+                    : "text-[var(--sp-muted)] hover:bg-[var(--sp-mist)]/60 hover:text-[var(--sp-ink)]"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </nav>
       </aside>
 
-      {/* Content — white reading panel on the tinted canvas */}
-      <div className="flex-1 min-w-0 max-w-3xl rounded-2xl border border-[var(--sp-border)] bg-white px-8 py-8 shadow-[0_18px_48px_rgba(15,19,25,0.05)] sm:px-10 sm:py-10">
-        <h1 className="text-2xl font-bold mb-2">StellarPay Developer Docs</h1>
-        <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API. Non-custodial and wallet-to-wallet — the SDK builds unsigned XDR, your user&apos;s wallet signs, and settlement happens on-chain.</P>
-        <div className="mt-8">{current.content}</div>
+      {/* White content — fills from the sidebar edge to the far right */}
+      <div className="min-w-0 flex-1 bg-white px-6 py-8 sm:px-8 lg:px-12 lg:py-10">
+        <div className="max-w-3xl">
+          <h1 className="mb-2 text-2xl font-bold text-[var(--sp-ink)]">StellarPay Developer Docs</h1>
+          <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API. Non-custodial and wallet-to-wallet — the SDK builds unsigned XDR, your user&apos;s wallet signs, and settlement happens on-chain.</P>
+          <div className="mt-8">{current.content}</div>
+        </div>
       </div>
     </div>
   );

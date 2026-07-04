@@ -2,7 +2,7 @@
 
 :root {
   /* Off-white surfaces — the cool/blue tone lives here, subtle and low-chroma */
-  --background: #f1f4f8;
+  --background: #f5f7fb;
   --sp-paper: #f8fafc;
   --sp-mist: #eceff4;   /* nav active / hover / chip + pill backgrounds */
   --sp-mint: #dee5ef;   /* focus ring, brand mark fill */

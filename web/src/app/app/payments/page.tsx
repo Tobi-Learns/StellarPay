@@ -162,7 +162,7 @@ export default function PaymentsPage() {
         </Link>
       </div>
 
-      <div className="mb-7 flex flex-wrap gap-3 rounded-2xl border border-black/5 bg-white/80 p-3 shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+      <div className="mb-7 flex flex-wrap gap-3 rounded-2xl border border-[var(--sp-border)] bg-white/80 p-3 shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
         <input
           type="search"
           placeholder="Search name, email, product, or id"
@@ -193,7 +193,7 @@ export default function PaymentsPage() {
             No payments match this view.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+          <div className="overflow-hidden rounded-2xl border border-[var(--sp-border)] bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
@@ -247,7 +247,7 @@ export default function PaymentsPage() {
             <Link href="/app/payments/new" className="underline">Create one.</Link>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+          <div className="overflow-hidden rounded-2xl border border-[var(--sp-border)] bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
               <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">

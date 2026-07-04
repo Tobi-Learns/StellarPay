@@ -16,6 +16,7 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          position: "relative",
           borderRadius: 6,
           background: "#071311",
           color: "#d8f7ee",
@@ -24,6 +25,8 @@ export default function Icon() {
           fontWeight: 800,
         }}
       >
+        <div style={{ position: "absolute", left: 9, top: 8, width: 3, height: 3, borderRadius: 999, background: "#2fbda2" }} />
+        <div style={{ position: "absolute", right: 10, top: 6, width: 1, height: 20, borderRadius: 999, background: "rgba(216,247,238,0.28)", transform: "rotate(25deg)" }} />
         S
       </div>,
       size

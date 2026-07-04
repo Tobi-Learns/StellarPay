@@ -24,7 +24,28 @@ export default function Image() {
           fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
-        <div style={{ fontSize: 32, fontWeight: 800 }}>StellarPay</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 32, fontWeight: 800 }}>
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              borderRadius: 14,
+              background: "#d8f7ee",
+              color: "#071311",
+              fontSize: 28,
+              fontWeight: 800,
+            }}
+          >
+            <div style={{ position: "absolute", left: 15, top: 14, width: 7, height: 7, borderRadius: 999, background: "#2fbda2" }} />
+            <div style={{ position: "absolute", right: 17, top: 11, width: 3, height: 34, borderRadius: 999, background: "rgba(7,19,17,0.24)", transform: "rotate(25deg)" }} />
+            S
+          </div>
+          StellarPay
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
           <div style={{ maxWidth: 900, fontSize: 78, fontWeight: 800, lineHeight: 0.95, letterSpacing: 0 }}>
             Turn every wallet into an online bank account.

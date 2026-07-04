@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { BrandLogo } from "@/components/brand";
 import { useWallet } from "@/lib/wallet-context";
 
 export default function ConnectPage() {
@@ -13,22 +14,24 @@ export default function ConnectPage() {
   }, [address, router]);
 
   return (
-    <div className="flex flex-1 items-center justify-center min-h-[calc(100vh-57px)]">
-      <div className="max-w-sm w-full mx-auto px-6 text-center">
+    <div className="flex min-h-[calc(100vh-57px)] flex-1 items-center justify-center bg-[var(--sp-paper)]">
+      <div className="mx-auto w-full max-w-sm px-6 text-center">
+        <div className="mb-8 flex justify-center">
+          <BrandLogo href="" showDescriptor />
+        </div>
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-neutral-900 mb-2">
-            Welcome to StellarPay
+          <h1 className="mb-2 text-2xl font-semibold text-[var(--sp-ink)]">
+            Connect your wallet
           </h1>
-          <p className="text-neutral-500 text-sm leading-relaxed">
-            Accept one-time and recurring payments on Stellar.
-            Connect your wallet to get started.
+          <p className="text-sm leading-relaxed text-[var(--sp-muted)]">
+            Start accepting one-time payments and recurring subscriptions on Stellar.
           </p>
         </div>
 
         <button
           onClick={connect}
           disabled={isConnecting}
-          className="w-full bg-neutral-900 text-white py-3 rounded-xl font-medium hover:bg-neutral-700 disabled:opacity-50 transition-colors"
+          className="w-full rounded-xl bg-[var(--sp-ink)] py-3 font-semibold text-white transition-colors hover:bg-[var(--sp-green)] disabled:opacity-50"
         >
           {isConnecting ? "Connecting…" : "Connect Freighter"}
         </button>
@@ -37,13 +40,13 @@ export default function ConnectPage() {
           <p className="mt-4 text-sm text-red-500">{error}</p>
         )}
 
-        <p className="mt-6 text-xs text-neutral-400">
+        <p className="mt-6 text-xs text-[var(--sp-muted)]/75">
           Don&apos;t have Freighter?{" "}
           <a
             href="https://freighter.app"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-neutral-600"
+            className="underline hover:text-[var(--sp-green)]"
           >
             Install it here
           </a>

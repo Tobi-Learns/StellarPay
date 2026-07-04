@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand";
 
 const integrationPaths = [
   {
@@ -47,9 +48,7 @@ export default function Home() {
 
         <div className="mx-auto flex min-h-[calc(100svh-8rem)] max-w-7xl flex-col justify-between px-6 py-12 sm:px-8 lg:px-10">
           <div className="max-w-3xl pt-8 text-white sm:pt-14">
-            <p className="mb-5 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-[#d8f7ee] backdrop-blur">
-              Payments infrastructure for Stellar
-            </p>
+            <BrandLogo tone="light" showDescriptor className="mb-6" />
             <h1 className="max-w-3xl text-5xl font-semibold leading-[0.98] tracking-normal text-white sm:text-7xl lg:text-8xl">
               StellarPay
             </h1>

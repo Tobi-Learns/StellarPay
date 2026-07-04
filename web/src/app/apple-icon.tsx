@@ -16,6 +16,7 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          position: "relative",
           borderRadius: 34,
           background: "#071311",
           color: "#d8f7ee",
@@ -24,6 +25,8 @@ export default function AppleIcon() {
           fontWeight: 800,
         }}
       >
+        <div style={{ position: "absolute", left: 53, top: 48, width: 14, height: 14, borderRadius: 999, background: "#2fbda2" }} />
+        <div style={{ position: "absolute", right: 56, top: 34, width: 5, height: 112, borderRadius: 999, background: "rgba(216,247,238,0.28)", transform: "rotate(25deg)" }} />
         S
       </div>,
       size

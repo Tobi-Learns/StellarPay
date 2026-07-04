@@ -41,6 +41,7 @@ export default function Image() {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              position: "relative",
               borderRadius: 14,
               background: "#d8f7ee",
               color: "#071311",
@@ -48,7 +49,9 @@ export default function Image() {
               fontWeight: 800,
             }}
           >
-            SP
+            <div style={{ position: "absolute", left: 15, top: 14, width: 7, height: 7, borderRadius: 999, background: "#2fbda2" }} />
+            <div style={{ position: "absolute", right: 17, top: 11, width: 3, height: 34, borderRadius: 999, background: "rgba(7,19,17,0.24)", transform: "rotate(25deg)" }} />
+            S
           </div>
           StellarPay
         </div>

@@ -1,0 +1,8 @@
+<svg width="284" height="72" viewBox="0 0 284 72" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="StellarPay">
+  <rect y="10" width="52" height="52" rx="14" fill="#071311"/>
+  <circle cx="16" cy="25" r="4" fill="#2FBDA2"/>
+  <path d="M36 18L22 54" stroke="#D8F7EE" stroke-opacity="0.32" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="26" y="43" text-anchor="middle" fill="#D8F7EE" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" letter-spacing="0">S</text>
+  <text x="68" y="43" fill="#071311" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800" letter-spacing="0">StellarPay</text>
+  <text x="70" y="59" fill="#596461" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="600" letter-spacing="0">Wallet-native payments</text>
+</svg>

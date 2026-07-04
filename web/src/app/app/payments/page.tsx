@@ -196,7 +196,7 @@ export default function PaymentsPage() {
           <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
-              <thead className="bg-[#f5f8fd] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
+              <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Name</th>
                   <th className="text-left font-medium px-4 py-3">Email</th>
@@ -207,7 +207,7 @@ export default function PaymentsPage() {
                   <th className="text-right font-medium px-4 py-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#e9eef7]">
+              <tbody className="divide-y divide-[#eaebef]">
                 {filteredSettledRows.map((event) => (
                   <tr key={event.txHash}>
                     <td className="px-4 py-4 font-medium text-[var(--sp-ink)]">{event.payerName || "Unknown payer"}</td>
@@ -250,7 +250,7 @@ export default function PaymentsPage() {
           <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-[#f5f8fd] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
+              <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Product or service</th>
                   <th className="text-left font-medium px-4 py-3">Amount (USDC)</th>
@@ -259,7 +259,7 @@ export default function PaymentsPage() {
                   <th className="text-right font-medium px-4 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#e9eef7]">
+              <tbody className="divide-y divide-[#eaebef]">
                 {filteredLinks.map((link) => (
                   <tr key={link.id}>
                     <td className="px-4 py-3">
@@ -270,7 +270,7 @@ export default function PaymentsPage() {
                     <td className="px-4 py-4 text-[var(--sp-muted)]">{formatDateTime(link.createdAt)}</td>
                     <td className="px-4 py-3">
                       {link.archivedAt ? (
-                        <span className="rounded-full bg-[#eceff5] px-2.5 py-1 text-xs font-semibold text-[var(--sp-muted)]">Archived</span>
+                        <span className="rounded-full bg-[#eceef2] px-2.5 py-1 text-xs font-semibold text-[var(--sp-muted)]">Archived</span>
                       ) : (
                         <span className="rounded-full bg-[var(--sp-mist)] px-2.5 py-1 text-xs font-semibold text-[var(--sp-green)]">Active</span>
                       )}

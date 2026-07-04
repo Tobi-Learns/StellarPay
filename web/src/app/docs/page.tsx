@@ -557,8 +557,8 @@ export default function DocsPage() {
         </div>
       </aside>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0 max-w-3xl">
+      {/* Content — white reading panel on the tinted canvas */}
+      <div className="flex-1 min-w-0 max-w-3xl rounded-2xl border border-[var(--sp-border)] bg-white px-8 py-8 shadow-[0_18px_48px_rgba(15,19,25,0.05)] sm:px-10 sm:py-10">
         <h1 className="text-2xl font-bold mb-2">StellarPay Developer Docs</h1>
         <P>Accept one-time and recurring payments on Stellar via the JS/TS SDK or the REST API. Non-custodial and wallet-to-wallet — the SDK builds unsigned XDR, your user&apos;s wallet signs, and settlement happens on-chain.</P>
         <div className="mt-8">{current.content}</div>

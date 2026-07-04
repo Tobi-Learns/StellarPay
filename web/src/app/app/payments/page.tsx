@@ -148,31 +148,32 @@ export default function PaymentsPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Payments</h1>
-          <p className="text-sm text-neutral-500 mt-1">Track one-time purchases and manage hosted payment links.</p>
+          <p className="text-sm font-semibold text-[var(--sp-green)]">Sales</p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-[var(--sp-ink)]">Payments</h1>
+          <p className="mt-1 text-sm text-[var(--sp-muted)]">Track customer purchases and manage checkout links.</p>
         </div>
         <Link
           href="/app/payments/new"
-          className="text-sm bg-neutral-900 text-white px-4 py-2 rounded-lg hover:bg-neutral-700 transition-colors"
+          className="rounded-full bg-[var(--sp-ink)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[var(--sp-green)]"
         >
           New payment link
         </Link>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="mb-7 flex flex-wrap gap-3 rounded-2xl border border-black/5 bg-white/80 p-3 shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
         <input
           type="search"
           placeholder="Search name, email, product, or id"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="min-w-[260px] flex-1 px-3 py-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900"
+          className="min-w-[260px] flex-1 rounded-xl border border-[var(--sp-border)] bg-white px-3 py-2 text-sm text-[var(--sp-ink)] outline-none transition focus:border-[var(--sp-green)] focus:ring-4 focus:ring-[var(--sp-mint)]"
         />
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+          className="rounded-xl border border-[var(--sp-border)] bg-white px-3 py-2 text-sm text-[var(--sp-ink)] outline-none transition focus:border-[var(--sp-green)] focus:ring-4 focus:ring-[var(--sp-mint)]"
         >
           <option value="all">All statuses</option>
           <option value="settled">Settled payments</option>
@@ -182,19 +183,20 @@ export default function PaymentsPage() {
       </div>
 
       <section className="mb-8">
-        <h2 className="text-sm font-medium text-neutral-500 uppercase tracking-wide mb-3">Payments received</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-normal text-[var(--sp-muted)]">Payments received</h2>
         {loading ? (
           <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-lg bg-white">
             {[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : filteredSettledRows.length === 0 ? (
-          <div className="text-center py-12 text-sm text-neutral-400 border border-dashed border-neutral-200 rounded-lg bg-white">
+          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white/75 py-12 text-center text-sm text-[var(--sp-muted)]">
             No payments match this view.
           </div>
         ) : (
-          <div className="overflow-x-auto border border-neutral-200 rounded-lg bg-white">
+          <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
-              <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+              <thead className="bg-[#f8faf6] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Name</th>
                   <th className="text-left font-medium px-4 py-3">Email</th>
@@ -205,21 +207,21 @@ export default function PaymentsPage() {
                   <th className="text-right font-medium px-4 py-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="divide-y divide-[#edf1eb]">
                 {filteredSettledRows.map((event) => (
                   <tr key={event.txHash}>
-                    <td className="px-4 py-3 text-neutral-900">{event.payerName || "Unknown payer"}</td>
-                    <td className="px-4 py-3 text-neutral-600">{event.payerEmail || "Not provided"}</td>
-                    <td className="px-4 py-3 text-neutral-900">{event.productName}</td>
-                    <td className="px-4 py-3 text-neutral-900">{event.amount ? formatUsdc(BigInt(event.amount)) : "0"} USDC</td>
-                    <td className="px-4 py-3 text-neutral-600">{formatDateTime(event.createdAt)}</td>
+                    <td className="px-4 py-4 font-medium text-[var(--sp-ink)]">{event.payerName || "Unknown payer"}</td>
+                    <td className="px-4 py-4 text-[var(--sp-muted)]">{event.payerEmail || "Not provided"}</td>
+                    <td className="px-4 py-4 text-[var(--sp-ink)]">{event.productName}</td>
+                    <td className="px-4 py-4 font-medium text-[var(--sp-ink)]">{event.amount ? formatUsdc(BigInt(event.amount)) : "0"} USDC</td>
+                    <td className="px-4 py-4 text-[var(--sp-muted)]">{formatDateTime(event.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Settled</span>
+                      <span className="rounded-full bg-[var(--sp-mist)] px-2.5 py-1 text-xs font-semibold text-[var(--sp-green)]">Settled</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/app/payments/received/${event.txHash}`}
-                        className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+                        className="rounded-full border border-[var(--sp-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sp-ink)] transition-colors hover:border-[var(--sp-green)] hover:bg-[var(--sp-mist)]"
                       >
                         Manage
                       </Link>
@@ -228,25 +230,27 @@ export default function PaymentsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>
 
       <section>
-        <h2 className="text-sm font-medium text-neutral-500 uppercase tracking-wide mb-3">Payment links</h2>
+        <h2 className="mb-3 text-xs font-bold uppercase tracking-normal text-[var(--sp-muted)]">Payment links</h2>
         {loading ? (
           <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-lg bg-white">
             {[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : filteredLinks.length === 0 ? (
-          <div className="text-center py-12 text-sm text-neutral-400 border border-dashed border-neutral-200 rounded-lg bg-white">
+          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white/75 py-12 text-center text-sm text-[var(--sp-muted)]">
             No payment links match this view.{" "}
             <Link href="/app/payments/new" className="underline">Create one.</Link>
           </div>
         ) : (
-          <div className="overflow-x-auto border border-neutral-200 rounded-lg bg-white">
+          <div className="overflow-hidden rounded-2xl border border-black/5 bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
+              <thead className="bg-[#f8faf6] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Product or service</th>
                   <th className="text-left font-medium px-4 py-3">Amount (USDC)</th>
@@ -255,33 +259,33 @@ export default function PaymentsPage() {
                   <th className="text-right font-medium px-4 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="divide-y divide-[#edf1eb]">
                 {filteredLinks.map((link) => (
                   <tr key={link.id}>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-neutral-900">{link.productName || link.description || "Untitled product or service"}</p>
-                      {link.extId && <p className="text-xs font-mono text-neutral-400 mt-0.5">{link.extId}</p>}
+                      <p className="font-semibold text-[var(--sp-ink)]">{link.productName || link.description || "Untitled product or service"}</p>
+                      {link.extId && <p className="mt-0.5 font-mono text-xs text-[var(--sp-muted)]/65">{link.extId}</p>}
                     </td>
-                    <td className="px-4 py-3 text-neutral-900">{formatUsdc(BigInt(link.amount))} USDC</td>
-                    <td className="px-4 py-3 text-neutral-600">{formatDateTime(link.createdAt)}</td>
+                    <td className="px-4 py-4 font-medium text-[var(--sp-ink)]">{formatUsdc(BigInt(link.amount))} USDC</td>
+                    <td className="px-4 py-4 text-[var(--sp-muted)]">{formatDateTime(link.createdAt)}</td>
                     <td className="px-4 py-3">
                       {link.archivedAt ? (
-                        <span className="rounded-full bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600">Archived</span>
+                        <span className="rounded-full bg-[#eef1ee] px-2.5 py-1 text-xs font-semibold text-[var(--sp-muted)]">Archived</span>
                       ) : (
-                        <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Active</span>
+                        <span className="rounded-full bg-[var(--sp-mist)] px-2.5 py-1 text-xs font-semibold text-[var(--sp-green)]">Active</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => copy(link)}
-                          className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+                          className="rounded-full border border-[var(--sp-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sp-ink)] transition-colors hover:border-[var(--sp-green)] hover:bg-[var(--sp-mist)]"
                         >
                           {copiedId === link.id ? "Copied!" : "Copy link"}
                         </button>
                         <Link
                           href={`/app/payments/${link.id}`}
-                          className="text-xs px-3 py-1.5 rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+                          className="rounded-full border border-[var(--sp-border)] px-3 py-1.5 text-xs font-semibold text-[var(--sp-ink)] transition-colors hover:border-[var(--sp-green)] hover:bg-[var(--sp-mist)]"
                         >
                           Manage
                         </Link>
@@ -291,6 +295,7 @@ export default function PaymentsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>

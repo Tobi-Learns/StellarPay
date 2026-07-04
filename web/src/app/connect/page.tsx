@@ -24,7 +24,7 @@ export default function ConnectPage() {
             Connect your wallet
           </h1>
           <p className="text-sm leading-relaxed text-[var(--sp-muted)]">
-            Start accepting one-time payments and recurring subscriptions on Stellar.
+            Manage customer payments, subscription plans, and your merchant wallet.
           </p>
         </div>
 

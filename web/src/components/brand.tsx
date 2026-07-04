@@ -19,11 +19,11 @@ export function BrandMark({ tone = "dark", className = "" }: { tone?: BrandTone;
   return (
     <span
       aria-hidden="true"
-      className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] ${toneClasses[tone].mark} ${className}`}
+      className={`relative inline-flex size-10 shrink-0 items-center justify-center rounded-xl ${toneClasses[tone].mark} ${className}`}
     >
-      <span className="absolute left-2 top-2 size-1.5 rounded-full bg-[var(--sp-teal)]" />
-      <span className="absolute right-2 top-1.5 h-6 w-px rotate-45 rounded-full bg-current/28" />
-      <span className="text-[15px] font-black leading-none tracking-normal">S</span>
+      <span className="absolute left-2.5 top-2.5 size-1.5 rounded-full bg-[var(--sp-teal)]" />
+      <span className="absolute right-2.5 top-2 h-7 w-px rotate-45 rounded-full bg-current/24" />
+      <span className="text-[13px] font-black leading-none tracking-normal">SP</span>
     </span>
   );
 }
@@ -46,7 +46,7 @@ export function BrandLogo({
         <span className={`text-base font-bold tracking-normal ${toneClasses[tone].word}`}>StellarPay</span>
         {showDescriptor && (
           <span className={`mt-1 text-[11px] font-medium tracking-normal ${toneClasses[tone].descriptor}`}>
-            Wallet-native payments
+            Merchant payments
           </span>
         )}
       </span>

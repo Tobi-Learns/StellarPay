@@ -1,19 +1,20 @@
 @import "tailwindcss";
 
 :root {
-  /* Neutral chrome — cool gray (was warm/beige-green) */
-  --background: #f4f5f7;
-  --foreground: #12151b;
-  --sp-ink: #0e1117;
-  --sp-forest: #1a2230;
-  --sp-paper: #f9fafb;
-  --sp-border: #dbdee4;
-  --sp-muted: #5e636e;
-  /* Accent — original green, kept */
+  /* Off-white surfaces — the cool/blue tone lives here, subtle and low-chroma */
+  --background: #f1f4f8;
+  --sp-paper: #f8fafc;
+  --sp-mist: #eceff4;   /* nav active / hover / chip + pill backgrounds */
+  --sp-mint: #dee5ef;   /* focus ring, brand mark fill */
+  --sp-border: #e0e4eb;
+  /* Neutral ink + text — cool gray, no hue */
+  --foreground: #0f1319;
+  --sp-ink: #0e1218;
+  --sp-forest: #1b2331;
+  --sp-muted: #5e6472;
+  /* Accent — original green, used sparingly (positive status + primary action) */
   --sp-green: #217669;
-  --sp-teal: #2fbda2;
-  --sp-mint: #d8f7ee;
-  --sp-mist: #eaf8f2;
+  --sp-teal: #7c8aa0;   /* brand mark dot, neutralized to cool slate */
 }
 
 @theme inline {

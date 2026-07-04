@@ -16,7 +16,7 @@ export function Header() {
         {address && (
           <Link
             href="/app"
-            className="hidden rounded-full bg-[var(--sp-mist)] px-3 py-1.5 text-sm font-semibold text-[var(--sp-green)] transition-colors hover:bg-[var(--sp-mint)] hover:text-[var(--sp-ink)] sm:inline-flex"
+            className="hidden rounded-full bg-[var(--sp-mist)] px-3 py-1.5 text-sm font-semibold text-[var(--sp-ink)] transition-colors hover:bg-[var(--sp-mint)] sm:inline-flex"
           >
             Platform
           </Link>
@@ -29,7 +29,7 @@ export function Header() {
         </Link>
         {address ? (
           <>
-            <span className="hidden rounded-full bg-[var(--sp-mist)] px-3 py-1 font-mono text-sm text-[var(--sp-green)] sm:inline-flex">
+            <span className="hidden rounded-full bg-[var(--sp-mist)] px-3 py-1 font-mono text-sm text-[var(--sp-muted)] sm:inline-flex">
               {truncateAddress(address)}
             </span>
             <button

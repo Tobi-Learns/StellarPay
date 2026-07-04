@@ -150,7 +150,7 @@ export default function PaymentsPage() {
     <div className="max-w-6xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-[var(--sp-green)]">Sales</p>
+          <p className="text-sm font-semibold text-[var(--sp-muted)]">Sales</p>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal text-[var(--sp-ink)]">Payments</h1>
           <p className="mt-1 text-sm text-[var(--sp-muted)]">Track customer purchases and manage checkout links.</p>
         </div>

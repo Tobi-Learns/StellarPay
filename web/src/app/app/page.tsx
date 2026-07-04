@@ -4,7 +4,7 @@ export default function AppOverviewPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6">
-        <p className="text-sm font-semibold text-[var(--sp-green)]">Overview</p>
+        <p className="text-sm font-semibold text-[var(--sp-muted)]">Overview</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-normal text-[var(--sp-ink)]">Dashboard</h1>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">

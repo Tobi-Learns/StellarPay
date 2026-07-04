@@ -47,7 +47,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               }`}
             >
               <span className="block font-semibold">{label}</span>
-              <span className={`hidden text-xs lg:block ${isActive ? "text-[var(--sp-green)]" : "text-[var(--sp-muted)]/75"}`}>
+              <span className={`hidden text-xs lg:block ${isActive ? "text-[var(--sp-muted)]" : "text-[var(--sp-muted)]/75"}`}>
                 {summary}
               </span>
             </Link>

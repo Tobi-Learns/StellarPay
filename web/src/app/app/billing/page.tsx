@@ -39,8 +39,8 @@ function statusPill(status: string) {
     ? "bg-green-50 text-green-700"
     : status === "PastDue"
       ? "bg-amber-50 text-amber-700"
-      : "bg-neutral-100 text-neutral-600";
-  return <span className={`rounded-full px-2 py-1 text-xs font-medium ${classes}`}>{status}</span>;
+      : "bg-[#eceef2] text-[var(--sp-muted)]";
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${classes}`}>{status}</span>;
 }
 
 export default function BillingPage() {

@@ -216,7 +216,7 @@ export default function PaymentsPage() {
                     <td className="px-4 py-4 font-medium text-[var(--sp-ink)]">{event.amount ? formatUsdc(BigInt(event.amount)) : "0"} USDC</td>
                     <td className="px-4 py-4 text-[var(--sp-muted)]">{formatDateTime(event.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-[var(--sp-mist)] px-2.5 py-1 text-xs font-semibold text-[var(--sp-green)]">Settled</span>
+                      <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">Settled</span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
@@ -272,7 +272,7 @@ export default function PaymentsPage() {
                       {link.archivedAt ? (
                         <span className="rounded-full bg-[#eceef2] px-2.5 py-1 text-xs font-semibold text-[var(--sp-muted)]">Archived</span>
                       ) : (
-                        <span className="rounded-full bg-[var(--sp-mist)] px-2.5 py-1 text-xs font-semibold text-[var(--sp-green)]">Active</span>
+                        <span className="rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">Active</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

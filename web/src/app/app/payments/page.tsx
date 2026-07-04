@@ -162,7 +162,7 @@ export default function PaymentsPage() {
         </Link>
       </div>
 
-      <div className="mb-7 flex flex-wrap gap-3 rounded-2xl border border-[var(--sp-border)] bg-white/80 p-3 shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
+      <div className="mb-7 flex flex-wrap gap-3 rounded-2xl border border-[var(--sp-border)] bg-white p-3 shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
         <input
           type="search"
           placeholder="Search name, email, product, or id"
@@ -189,7 +189,7 @@ export default function PaymentsPage() {
             {[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : filteredSettledRows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white/75 py-12 text-center text-sm text-[var(--sp-muted)]">
+          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white py-12 text-center text-sm text-[var(--sp-muted)]">
             No payments match this view.
           </div>
         ) : (
@@ -242,7 +242,7 @@ export default function PaymentsPage() {
             {[...Array(3)].map((_, i) => <SkeletonRow key={i} />)}
           </div>
         ) : filteredLinks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white/75 py-12 text-center text-sm text-[var(--sp-muted)]">
+          <div className="rounded-2xl border border-dashed border-[var(--sp-border)] bg-white py-12 text-center text-sm text-[var(--sp-muted)]">
             No payment links match this view.{" "}
             <Link href="/app/payments/new" className="underline">Create one.</Link>
           </div>

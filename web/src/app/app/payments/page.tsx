@@ -196,7 +196,7 @@ export default function PaymentsPage() {
           <div className="overflow-hidden rounded-2xl border border-[var(--sp-border)] bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-sm">
-              <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
+              <thead className="bg-[#fdfeff] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Name</th>
                   <th className="text-left font-medium px-4 py-3">Email</th>
@@ -250,7 +250,7 @@ export default function PaymentsPage() {
           <div className="overflow-hidden rounded-2xl border border-[var(--sp-border)] bg-white shadow-[0_18px_48px_rgba(7,19,17,0.05)]">
             <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-sm">
-              <thead className="bg-[#f6f7f9] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
+              <thead className="bg-[#fdfeff] text-xs uppercase tracking-normal text-[var(--sp-muted)]">
                 <tr>
                   <th className="text-left font-medium px-4 py-3">Product or service</th>
                   <th className="text-left font-medium px-4 py-3">Amount (USDC)</th>

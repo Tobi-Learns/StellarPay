@@ -79,6 +79,7 @@ export interface SubscriptionRecord {
   payerName?: string;
   payerEmail?: string;
   status: string;
+  needsReauthorization?: boolean; // 2.4b — funded but allowance exhausted/expired
   anchorAt?: string;
   periodsCharged?: number;
   createdAt: string;

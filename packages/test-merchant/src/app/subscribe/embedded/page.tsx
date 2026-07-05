@@ -12,7 +12,7 @@ import {
   type Interval,
 } from "@stellarpay/sdk";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
-import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
+import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS!;
@@ -57,6 +57,13 @@ export default function SubscribeEmbeddedPage() {
       if ("error" in access) throw new Error(access.error);
       const address = access.address;
 
+      // 3.3d — duplicate-subscription guard: a second Active sub on this plan
+      // would double-charge. Cross-origin, so check via the server proxy.
+      const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
+      if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
+        throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
+      }
+
       // Auto-setup trustline if wallet doesn't have one — must happen before any SAC call.
       setStep("setup");
       const c = sdkClient();
@@ -95,8 +102,8 @@ export default function SubscribeEmbeddedPage() {
           merchant: MERCHANT_ADDRESS,
           amount: AMOUNT_STR,
           anchorAt: anchor.toISOString(),
-          payerName: DEMO_CUSTOMER.name,
-          payerEmail: DEMO_CUSTOMER.email,
+          payerName: getDemoCustomer().name,
+          payerEmail: getDemoCustomer().email,
         }),
       });
       if (!regRes.ok) {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { StellarPayButton } from "@stellarpay/sdk/react";
 import { TESTNET, parseUsdc } from "@stellarpay/sdk";
-import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
+import { useDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -22,6 +22,7 @@ export default function EmbeddedCheckoutPage() {
   const [txHash, setTxHash] = useState("");
   const [loadError, setLoadError] = useState("");
   const [payError, setPayError] = useState("");
+  const demoCustomer = useDemoCustomer();
 
   useEffect(() => {
     // The merchant already provisioned this link; reference it, don't create one.
@@ -153,8 +154,8 @@ export default function EmbeddedCheckoutPage() {
                     merchant={MERCHANT}
                     amount={AMOUNT}
                     linkId={linkNumericId}
-                    payerName={DEMO_CUSTOMER.name}
-                    payerEmail={DEMO_CUSTOMER.email}
+                    payerName={demoCustomer.name}
+                    payerEmail={demoCustomer.email}
                     onSuccess={(hash) => {
                       setTxHash(hash);
                       setPageState("success");

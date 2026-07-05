@@ -108,9 +108,17 @@ export async function GET(req: NextRequest) {
   };
 
   // --- Needs attention ------------------------------------------------------
-  // Subscriptions that are PastDue or mid-retry — the operational worklist.
+  // Subscriptions that are PastDue, mid-retry, or awaiting re-authorization —
+  // the operational worklist. Re-auth (2.4b) is a funded customer whose SAC
+  // allowance ran out; it's distinct from PastDue/insufficient funds.
   const needsAttention = subs
-    .filter((s) => s.status === "PastDue" || s.retryCount > 0 || s.nextRetryAt !== null)
+    .filter(
+      (s) =>
+        s.status === "PastDue" ||
+        s.retryCount > 0 ||
+        s.nextRetryAt !== null ||
+        s.needsReauthorization
+    )
     .map((s) => ({
       extId: s.extId,
       onChainId: s.onChainId,
@@ -123,6 +131,7 @@ export async function GET(req: NextRequest) {
       status: s.status,
       retryCount: s.retryCount,
       nextRetryAt: s.nextRetryAt,
+      needsReauthorization: s.needsReauthorization,
     }));
 
   // --- Recent activity ------------------------------------------------------

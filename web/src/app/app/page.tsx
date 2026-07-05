@@ -26,6 +26,7 @@ interface AttentionRow {
   status: string;
   retryCount: number;
   nextRetryAt: string | null;
+  needsReauthorization: boolean;
 }
 
 interface ActivityRow {
@@ -178,7 +179,9 @@ export default function AppOverviewPage() {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-sm font-medium text-[var(--sp-ink)]">{usdc(row.amount)}</span>
-                          {row.status === "PastDue" ? (
+                          {row.needsReauthorization ? (
+                            <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">Needs re-auth</span>
+                          ) : row.status === "PastDue" ? (
                             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">Past due</span>
                           ) : (
                             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">

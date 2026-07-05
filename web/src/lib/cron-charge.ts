@@ -114,12 +114,24 @@ async function simulateSacView(
 // insufficient funds flips the subscription to PastDue on-chain, which is
 // terminal — so we compute what's affordable BEFORE submitting and never send a
 // doomed charge.
-async function affordablePeriods(
+//
+// Returns the raw allowance/balance too, so the caller can tell WHY affordable
+// is 0 (2.4a): a balance shortfall means the customer can't pay (→ 2j retry),
+// while an allowance shortfall with a healthy balance means the contract merely
+// lost permission to pull — the customer is funded and must re-authorize, which
+// must NOT be treated as insufficient funds or count toward cancellation.
+interface Affordability {
+  periods: number;
+  allowance: bigint;
+  balance: bigint;
+}
+
+async function checkAffordability(
   adminAddress: string,
   subscriber: string,
   amount: bigint
-): Promise<number> {
-  if (amount <= BigInt(0)) return 0;
+): Promise<Affordability> {
+  if (amount <= BigInt(0)) return { periods: 0, allowance: BigInt(0), balance: BigInt(0) };
   const allowance = await simulateSacView(
     adminAddress,
     "allowance",
@@ -132,7 +144,7 @@ async function affordablePeriods(
     new Address(subscriber).toScVal()
   );
   const coverable = (allowance < balance ? allowance : balance) / amount;
-  return Number(coverable);
+  return { periods: Number(coverable), allowance, balance };
 }
 
 export async function runChargePass(mode: ChargeMode) {
@@ -167,7 +179,13 @@ export async function runChargePass(mode: ChargeMode) {
       if (onChain.status !== "Active") {
         await db.subscription.update({
           where: { onChainId: sub.onChainId },
-          data: { status: onChain.status, retryCount: 0, nextRetryAt: null },
+          data: {
+            status: onChain.status,
+            retryCount: 0,
+            nextRetryAt: null,
+            needsReauthorization: false,
+            reauthRequestedAt: null,
+          },
         });
         results.push({ id: sub.onChainId, result: `skipped — status ${onChain.status}` });
         continue;
@@ -193,9 +211,56 @@ export async function runChargePass(mode: ChargeMode) {
 
       // Confirm what the subscriber can cover, then charge that many (partial catch-up).
       const amount = BigInt(sub.amount);
-      const affordable = await affordablePeriods(adminKp.publicKey(), sub.subscriber, amount);
+      const { periods: affordable, balance } = await checkAffordability(
+        adminKp.publicKey(),
+        sub.subscriber,
+        amount
+      );
 
       if (affordable === 0) {
+        // Split the failure (2.4a): a healthy balance means the subscriber is
+        // funded and the SAC allowance is simply exhausted/expired — the contract
+        // lost permission to pull. That is NOT insufficient funds: flag it for
+        // re-authorization (2.4b), never cancel a funded customer, and never count
+        // it toward the 2j retry-cancel. It self-clears on the next successful
+        // charge once the customer re-approves.
+        if (balance >= amount) {
+          const firstFlag = !sub.needsReauthorization;
+          await db.subscription.update({
+            where: { onChainId: sub.onChainId },
+            data: {
+              needsReauthorization: true,
+              reauthRequestedAt: sub.reauthRequestedAt ?? now,
+              nextRetryAt: new Date(Date.now() + RETRY_DELAY_MS),
+            },
+          });
+          if (firstFlag) {
+            await db.event.create({
+              data: {
+                extId: newId("evt"),
+                type: "subscription.needs_reauthorization",
+                txHash: `reauth-${sub.onChainId}-${Date.now()}`,
+                subscriptionId: sub.id,
+                data: {
+                  subId: sub.onChainId,
+                  triggeredBy: "cron",
+                  reason: "allowance_exhausted_or_expired",
+                },
+              },
+            });
+            deliverWebhook(sub.merchant, "subscription.needs_reauthorization", {
+              subId: sub.onChainId,
+              reason: "allowance_exhausted_or_expired",
+            }).catch(() => {});
+          }
+          results.push({
+            id: sub.onChainId,
+            result: "needs reauthorization — allowance exhausted/expired, balance OK",
+          });
+          continue;
+        }
+
+        // Genuine balance shortfall — the 2j insufficient-funds retry/cancel path.
         if (sub.retryCount >= MAX_RETRIES) {
           // Confirmed customer-side insufficient funds/allowance after both
           // retries — cancel platform-side. The contract's cancel() needs the
@@ -260,6 +325,10 @@ export async function runChargePass(mode: ChargeMode) {
           periodsCharged: charged ? settled.newPeriodsCharged : sub.periodsCharged,
           retryCount: 0,
           nextRetryAt: null,
+          // A successful charge means the allowance was sufficient this pass, so
+          // any prior re-authorization flag is resolved (2.4b self-heal).
+          needsReauthorization: false,
+          reauthRequestedAt: null,
         },
       });
 

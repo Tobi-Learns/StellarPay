@@ -58,8 +58,10 @@ model Subscription {
   payerName     String?
   payerEmail    String?
   status        String   @default("Active")  // Active | PastDue | Canceled
-  retryCount    Int      @default(0)         // consecutive insufficient-funds observations (2j retry policy)
+  retryCount    Int      @default(0)         // consecutive insufficient-BALANCE observations (2j retry policy); never incremented by allowance shortfalls (2.4a)
   nextRetryAt   DateTime?                    // when the retry cron should re-attempt this charge
+  needsReauthorization Boolean @default(false)  // 2.4b: allowance exhausted/expired but balance OK — contract lost permission; funded, so NOT canceled. Self-clears on next successful charge
+  reauthRequestedAt    DateTime?              // when the sub first entered needs-reauthorization (for dunning grace timing, 2.4f)
   anchorAt      DateTime @default(now())     // subscribe date; billing boundaries are computed from this (2.1)
   periodsCharged Int     @default(1)         // charges made so far; next_charge_at = billingDateAfter(anchorAt, interval, periodsCharged)
   createdAt     DateTime @default(now())

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
-import { DEMO_CUSTOMER, DemoCustomerCard } from "@/lib/demo-customer";
+import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -119,8 +119,8 @@ export default function HeadlessCheckoutPage() {
         merchant: MERCHANT_ADDRESS,
         amount: AMOUNT_STR,
         linkId: link.numericId,
-        payerName: DEMO_CUSTOMER.name,
-        payerEmail: DEMO_CUSTOMER.email,
+        payerName: getDemoCustomer().name,
+        payerEmail: getDemoCustomer().email,
         payerWallet: access.address,
       }).catch(() => {});
       setTxHash(hash);

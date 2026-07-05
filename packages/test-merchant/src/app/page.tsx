@@ -64,6 +64,10 @@ export default function Page() {
           <span style={{ fontSize: 20 }}>☕</span>
           <span style={{ color: "#fff", fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em" }}>Stellar Roast</span>
         </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
+          <a href="/account" style={{ color: "#a8a29e", fontSize: 14, textDecoration: "none" }}>My subscriptions</a>
+          <a href="/settings" style={{ color: "#a8a29e", fontSize: 14, textDecoration: "none" }}>Settings</a>
+        </div>
       </nav>
 
       {/* Hero */}

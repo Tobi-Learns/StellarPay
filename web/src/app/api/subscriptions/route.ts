@@ -38,6 +38,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  // Duplicate-subscription guard (2.4h/3.3c): at most one Active sub per
+  // (subscriber, plan). A needsReauthorization sub is still Active; a Canceled
+  // one is not. Exclude this same onChainId so re-registering an existing sub
+  // (the idempotent upsert) is never blocked.
+  const existingActive = await db.subscription.findFirst({
+    where: { subscriber, planOnChainId, status: "Active", onChainId: { not: onChainId } },
+  });
+  if (existingActive) {
+    return NextResponse.json(
+      { error: "Subscriber already has an active subscription on this plan", existing: existingActive },
+      { status: 409 }
+    );
+  }
+
   const sub = await db.subscription.upsert({
     where: { onChainId },
     update: {},

@@ -213,6 +213,29 @@ export class StellarPayClient {
     return this._get(`/api/subscriptions?${param}`);
   }
 
+  /**
+   * Duplicate-subscription guard (2.4h). Throws if `subscriber` already holds an
+   * Active subscription on `planOnChainId`. Call this BEFORE `buildSubscribeXdr` —
+   * it runs before signing, so it's the only check that actually prevents a
+   * duplicate on-chain subscribe and its immediate double charge. A
+   * `needsReauthorization` sub counts as Active (it's a live subscription); a
+   * Canceled one does not. The thrown error carries the existing record on
+   * `.existing`. (Same-origin; cross-origin callers must proxy the read.)
+   */
+  async assertNoActiveSubscription(subscriber: string, planOnChainId: string): Promise<void> {
+    const subs = await this.listSubscriptions({ subscriber });
+    const existing = subs.find(
+      (s) => s.planOnChainId === planOnChainId && s.status === "Active"
+    );
+    if (existing) {
+      const err = new Error(
+        `Already subscribed to plan ${planOnChainId} (subscription ${existing.onChainId}).`
+      ) as Error & { existing?: SubscriptionRecord };
+      err.existing = existing;
+      throw err;
+    }
+  }
+
   // ── On-chain read views ─────────────────────────────────────────────────────
 
   async getPlan(planId: bigint): Promise<Plan> {

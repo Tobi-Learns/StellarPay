@@ -40,9 +40,16 @@ export function MobileFreighterQr({
     setReportedSettled(false);
     if (!session) return;
 
-    QRCode.toDataURL(session.uri, { errorCorrectionLevel: "M", margin: 1, width: 220 })
-      .then((src) => {
-        if (alive) setQrSrc(src);
+    QRCode.toString(session.uri, {
+      type: "svg",
+      errorCorrectionLevel: "L",
+      margin: 4,
+      width: 340,
+      color: { dark: "#000000", light: "#ffffff" },
+    })
+      .then((svg) => {
+        if (!alive) return;
+        setQrSrc(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
       })
       .catch((e) => {
         if (alive) setStatus({ status: "rejected", error: String(e) });
@@ -85,9 +92,9 @@ export function MobileFreighterQr({
   const waiting = !status || status.status === "pending" || status.status === "submitted";
 
   return (
-    <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff", display: "grid", gridTemplateColumns: "auto 1fr", gap: 16, alignItems: "center" }}>
-      <div style={{ width: 220, height: 220, border: "1px solid #e7e5e4", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff" }}>
-        {qrSrc ? <img alt={title} src={qrSrc} width={220} height={220} /> : <span style={{ color: "#a8a29e", fontSize: 12 }}>Generating QR...</span>}
+    <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff", display: "grid", gridTemplateColumns: "minmax(260px, 340px) 1fr", gap: 16, alignItems: "center" }}>
+      <div style={{ width: "100%", aspectRatio: "1 / 1", border: "1px solid #e7e5e4", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", padding: 8, boxSizing: "border-box" }}>
+        {qrSrc ? <img alt={title} src={qrSrc} style={{ width: "100%", height: "100%", display: "block" }} /> : <span style={{ color: "#a8a29e", fontSize: 12 }}>Generating QR...</span>}
       </div>
       <div>
         <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 700, color: "#1c1917" }}>{title}</p>

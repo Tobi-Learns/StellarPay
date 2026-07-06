@@ -1,35 +1,41 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
 
+const proofPoints = [
+  "Hosted links, embedded button, and headless SDK",
+  "One-time checkout plus recurring subscription pulls",
+  "Live billing automation, webhooks, API keys, and dashboard records",
+];
+
 const integrationPaths = [
   {
     label: "Hosted checkout",
     title: "Create a link. Send it anywhere.",
-    body: "Spin up a checkout page for one-time payments or subscriptions, then let the payer sign from their Stellar wallet.",
+    body: "Use StellarPay's hosted checkout for one-time payments or subscriptions without building payment UI.",
   },
   {
     label: "Embedded button",
     title: "Drop payments into your own flow.",
-    body: "Use the React button to connect Freighter, set up trustlines, sign, submit, and record customer identity.",
+    body: "Add a React button that connects Freighter, prepares trustlines, signs, submits, and records customer identity.",
   },
   {
     label: "Headless SDK",
     title: "Own the interface end to end.",
-    body: "Build custom checkout with unsigned XDR builders, API records, webhooks, and on-chain settlement primitives.",
+    body: "Build custom checkout with XDR builders, typed API records, HMAC webhooks, and on-chain settlement primitives.",
   },
 ];
 
-const proofPoints = [
-  "Wallet-to-wallet settlement on Stellar testnet",
-  "One-time payments and recurring subscription pulls",
-  "Typed resource IDs, webhooks, API keys, and dashboard records",
+const steps = [
+  ["Create", "Connect a merchant wallet and create a payment link or subscription plan."],
+  ["Share", "Send a hosted URL, embed a button, or route customers through your own SDK-powered checkout."],
+  ["Sign", "Customers sign once to pay. Subscriptions sign approve plus subscribe, then renew without repeat signatures."],
+  ["Settle", "Funds move wallet to wallet on Stellar; events, receipts, webhooks, and dashboard records update around the transaction."],
 ];
 
-const steps = [
-  ["Create", "A merchant creates a product link or subscription plan with a Stellar asset and amount."],
-  ["Share", "Customers open a hosted checkout, embedded button, or custom SDK-powered flow."],
-  ["Sign", "The payer authorizes the transaction once from their wallet. Subscriptions approve a capped allowance."],
-  ["Settle", "Funds move on-chain, events are recorded, and webhooks keep the merchant stack in sync."],
+const comparisonRows = [
+  ["Crypto gateways", "Fast no-KYC onboarding, usually one-time checkout only."],
+  ["Stripe", "Excellent subscriptions, but business registration and country gates still decide who gets in."],
+  ["StellarPay", "A wallet is the merchant account: one-time payments, subscriptions, SDK, webhooks, and automated billing."],
 ];
 
 export default function Home() {
@@ -42,7 +48,7 @@ export default function Home() {
           aria-hidden="true"
         />
         <div
-          className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(5,14,18,0.94)_0%,rgba(5,14,18,0.86)_34%,rgba(5,14,18,0.44)_68%,rgba(5,14,18,0.18)_100%)]"
+          className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(5,14,18,0.95)_0%,rgba(5,14,18,0.88)_34%,rgba(5,14,18,0.48)_68%,rgba(5,14,18,0.2)_100%)]"
           aria-hidden="true"
         />
 
@@ -86,26 +92,26 @@ export default function Home() {
       </section>
 
       <section className="border-y border-[#d9ded7] bg-[#fbfcf8]">
-        <div className="mx-auto grid max-w-7xl gap-8 px-6 py-14 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:px-10">
+        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-16 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:px-10">
           <div>
-            <p className="text-sm font-semibold text-[#217669]">Built for merchant workflows</p>
+            <p className="text-sm font-semibold text-[#217669]">The wedge</p>
             <h2 className="mt-3 max-w-xl text-3xl font-semibold leading-tight text-[#101817] sm:text-4xl">
-              Checkout that feels simple, with settlement that stays transparent.
+              Small businesses need Stripe&apos;s workflow, without Stripe&apos;s gate.
             </h2>
+            <p className="mt-5 max-w-xl text-base leading-8 text-[#596461]">
+              Crypto gateways can onboard quickly, but most stop at one-time payments. Stripe has subscriptions, but access still depends on registration, banking, and geography. StellarPay combines permissionless wallet onboarding with a complete processor surface.
+            </p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-[#d9ded7] bg-white p-5">
-              <p className="text-sm font-semibold text-[#101817]">1% platform fee</p>
-              <p className="mt-2 text-sm leading-6 text-[#596461]">
-                Fee splitting happens in the contract, so merchants and the platform receive their shares automatically.
-              </p>
-            </div>
-            <div className="rounded-lg border border-[#d9ded7] bg-white p-5">
-              <p className="text-sm font-semibold text-[#101817]">Non-custodial by default</p>
-              <p className="mt-2 text-sm leading-6 text-[#596461]">
-                Payers sign with their own wallet. StellarPay coordinates checkout, records, and automation without holding funds.
-              </p>
-            </div>
+          <div className="self-start overflow-hidden rounded-lg border border-[#d9ded7] bg-white shadow-sm">
+            {comparisonRows.map(([label, body], index) => (
+              <div
+                key={label}
+                className={`grid gap-3 p-5 sm:grid-cols-[11rem_1fr] ${index > 0 ? "border-t border-[#e5e9e3]" : ""}`}
+              >
+                <p className="text-sm font-semibold text-[#101817]">{label}</p>
+                <p className="text-sm leading-6 text-[#596461]">{body}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -185,19 +191,19 @@ export default function Home() {
             </div>
           </div>
           <div className="rounded-md bg-[#f6f7f4] p-4 text-sm leading-6 text-[#596461]">
-            Webhooks notify the merchant stack when a subscription is charged, retried, past due, or canceled.
+            The allowance remains capped on-chain, and webhooks notify the merchant stack when a subscription is charged, retried, past due, reauthorized, or canceled.
           </div>
         </div>
       </section>
 
       <section className="border-t border-[#d9ded7] bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-6 py-14 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+        <div className="mx-auto grid max-w-7xl gap-6 px-6 py-14 sm:px-8 lg:grid-cols-[1fr_auto] lg:items-center lg:px-10">
           <div>
             <h2 className="text-3xl font-semibold leading-tight text-[#101817]">
-              Build on Stellar without rebuilding checkout.
+              One percent, no payout layer, no custody.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[#596461]">
-              Try the hosted platform first, then move deeper into the SDK as your product needs more control.
+              Price is not the whole product. The point is simple: wallet-native checkout, recurring billing, and an all-in fee model on Stellar rails.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -208,10 +214,10 @@ export default function Home() {
               Open the platform
             </Link>
             <Link
-              href="/docs"
+              href="/pricing"
               className="inline-flex items-center justify-center rounded-md border border-[#cdd5cf] px-5 py-3 text-sm font-semibold text-[#101817] transition-colors hover:border-[#101817]"
             >
-              Explore SDK docs
+              Compare pricing
             </Link>
           </div>
         </div>

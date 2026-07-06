@@ -22,10 +22,22 @@ export function Header() {
           </Link>
         )}
         <Link
+          href="/"
+          className="text-sm font-medium text-[var(--sp-muted)] transition-colors hover:text-[var(--sp-ink)]"
+        >
+          Home
+        </Link>
+        <Link
           href="/docs"
           className="text-sm font-medium text-[var(--sp-muted)] transition-colors hover:text-[var(--sp-ink)]"
         >
           Docs
+        </Link>
+        <Link
+          href="/pricing"
+          className="text-sm font-medium text-[var(--sp-muted)] transition-colors hover:text-[var(--sp-ink)]"
+        >
+          Pricing
         </Link>
         {address ? (
           <>

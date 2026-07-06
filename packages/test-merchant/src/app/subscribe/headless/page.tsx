@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import {
@@ -13,6 +13,7 @@ import {
   type Interval,
 } from "@stellarpay/sdk";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
+import { MobileFreighterQr, type MobileSigningSession } from "@/components/mobile-freighter-qr";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -24,6 +25,7 @@ const INTERVAL: Interval = { unit: "minute", count: 5 };
 
 const AMOUNT = parseUsdc("3.00");
 const AMOUNT_STR = AMOUNT.toString();
+type MobileSessionResponse = MobileSigningSession;
 
 type Step =
   | "idle"
@@ -51,6 +53,9 @@ function client() {
 export default function HeadlessSubscribePage() {
   const [step, setStep] = useState<Step>("idle");
   const [subscriber, setSubscriber] = useState("");
+  const [mobileWallet, setMobileWallet] = useState("");
+  const [approveSession, setApproveSession] = useState<MobileSigningSession | null>(null);
+  const [subscribeSession, setSubscribeSession] = useState<MobileSigningSession | null>(null);
   const [planId, setPlanId] = useState<bigint | null>(null);
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
@@ -167,6 +172,108 @@ export default function HeadlessSubscribePage() {
     }
   }
 
+  async function createMobileSession(payload: {
+    kind: "approve" | "subscribe";
+    xdr: string;
+    message: string;
+    context?: Record<string, string>;
+  }): Promise<MobileSigningSession> {
+    const res = await fetch("/api/mobile-signing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json() as MobileSessionResponse & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? "Failed to create mobile signing session");
+    return body;
+  }
+
+  async function handleMobileSubscribe() {
+    setError("");
+    setApproveSession(null);
+    setSubscribeSession(null);
+    setStep("setup");
+
+    try {
+      if (!MERCHANT_ADDRESS) {
+        throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
+      }
+      if (!PLAN_ID) {
+        throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_HEADLESS (run scripts/seed-test-merchant.mjs).");
+      }
+      if (!mobileWallet.trim()) {
+        throw new Error("Paste the public key from the Freighter mobile wallet that will scan this QR.");
+      }
+
+      const address = mobileWallet.trim();
+      setSubscriber(address);
+
+      const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
+      if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
+        throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
+      }
+
+      const c = client();
+      const trustlineXdr = await c.buildTrustlineXdr(address);
+      if (trustlineXdr) {
+        throw new Error("This mobile wallet needs a USDC trustline first. Add the test USDC trustline in Freighter, then generate the QR again.");
+      }
+
+      const resolvedPlanId = BigInt(PLAN_ID);
+      setPlanId(resolvedPlanId);
+
+      const ledger = await c.getCurrentLedger();
+      const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
+      setApproveSession(await createMobileSession({
+        kind: "approve",
+        xdr: approveXdr,
+        message: "Approve StellarPay subscription allowance",
+        context: { subscriber: address, planOnChainId: String(resolvedPlanId) },
+      }));
+      setStep("approving");
+    } catch (e) {
+      setError(String(e));
+      setStep("error");
+    }
+  }
+
+  const handleApproveSettled = useCallback(async () => {
+    try {
+      if (!PLAN_ID || !mobileWallet.trim()) return;
+      const address = mobileWallet.trim();
+      const c = client();
+      const resolvedPlanId = BigInt(PLAN_ID);
+      const anchor = new Date();
+      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
+      const createdSubId = snowflakeU64();
+      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt, createdSubId);
+      setSubId(createdSubId);
+      setStep("subscribing");
+      setSubscribeSession(await createMobileSession({
+        kind: "subscribe",
+        xdr: subscribeXdr,
+        message: "Create StellarPay coffee subscription",
+        context: {
+          subscriptionOnChainId: String(createdSubId),
+          planOnChainId: String(resolvedPlanId),
+          subscriber: address,
+          merchant: MERCHANT_ADDRESS,
+          amount: AMOUNT_STR,
+          anchorAt: anchor.toISOString(),
+          payerName: getDemoCustomer().name,
+          payerEmail: getDemoCustomer().email,
+        },
+      }));
+    } catch (e) {
+      setError(String(e));
+      setStep("error");
+    }
+  }, [mobileWallet]);
+
+  const handleSubscribeSettled = useCallback(() => {
+    setStep("success");
+  }, []);
+
   if (step === "success") {
     return (
       <SubscribeShell>
@@ -266,6 +373,41 @@ export default function HeadlessSubscribePage() {
               ))}
             </div>
 
+            <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Freighter mobile QR</p>
+              <input
+                value={mobileWallet}
+                onChange={(e) => setMobileWallet(e.target.value)}
+                placeholder="Paste mobile wallet public key (G...)"
+                disabled={isWorking}
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 8, border: "1px solid #d6d3d1", fontSize: 13, marginBottom: 10 }}
+              />
+              <button
+                onClick={canSubscribe ? handleMobileSubscribe : undefined}
+                disabled={!canSubscribe}
+                style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #047857", cursor: canSubscribe ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: canSubscribe ? "#fff" : "#f5f5f4", color: canSubscribe ? "#047857" : "#a8a29e" }}
+              >
+                Generate mobile QR chain
+              </button>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#a8a29e", lineHeight: 1.5 }}>
+                Freighter mobile signs twice: first approve the allowance, then scan the second QR to create the subscription.
+              </p>
+            </div>
+
+            <MobileFreighterQr
+              session={approveSession}
+              title="Step 1: approve allowance"
+              description="Scan in Freighter mobile and approve the capped StellarPay allowance."
+              onSettled={handleApproveSettled}
+            />
+
+            <MobileFreighterQr
+              session={subscribeSession}
+              title="Step 2: create subscription"
+              description="After approval settles, scan this QR and sign the subscription transaction."
+              onSettled={handleSubscribeSettled}
+            />
+
             <button
               onClick={canSubscribe ? handleSubscribe : undefined}
               disabled={!canSubscribe}
@@ -281,13 +423,13 @@ export default function HeadlessSubscribePage() {
                 color: step === "error" ? "#dc2626" : canSubscribe ? "#fff" : "#a8a29e",
               }}
             >
-              {step === "error" ? "Try again" : isWorking ? "Working..." : "Subscribe - 3 USDC/mo"}
+              {step === "error" ? "Try again in browser" : isWorking ? "Working..." : "Subscribe in browser - 3 USDC/mo"}
             </button>
 
             {error && <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>{error}</p>}
 
             <p style={{ fontSize: 11, color: "#a8a29e", margin: 0, lineHeight: 1.5 }}>
-              This page uses raw SDK builders and Freighter signing directly; no hosted checkout and no embedded widget.
+              This page uses raw SDK builders with either browser Freighter signing or Freighter mobile QR signing; no hosted checkout and no embedded widget.
             </p>
           </div>
         </div>

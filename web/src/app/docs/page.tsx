@@ -514,19 +514,30 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
     id: "limitations",
     label: "Limitations & mobile",
     description:
-      "What's supported today — Freighter browser signing — and what's coming next, including mobile and QR checkout.",
+      "What's supported today: Freighter browser signing plus Freighter mobile QR signing for headless checkout flows.",
     content: (
       <>
         <Note>
-          <strong>Signing is browser-wallet only today.</strong> The SDK returns unsigned XDR and you bring the signature — the current supported path is <Code>Freighter</Code> in a desktop browser. The hosted checkout pages require a browser wallet too.
+          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. The headless/test-merchant flow can also encode unsigned XDR as a SEP-0007 <Code>web+stellar:tx</Code> QR so Freighter mobile scans, signs, and returns the signed transaction through a callback.
         </Note>
-        <P>Planned for Phase 5 (additive — no breaking changes to the calls above):</P>
+        <H3>Freighter mobile QR flow</H3>
+        <Pre>{`import { buildSep7TxUri } from "@stellarpay/sdk";
+
+const uri = buildSep7TxUri({
+  xdr,
+  callback: "https://merchant.example/api/mobile-signing/callback",
+  msg: "Sign StellarPay payment",
+  networkPassphrase: TESTNET.networkPassphrase,
+});
+
+// Render \`uri\` as a QR code. Freighter mobile scans and signs it.`}</Pre>
+        <P>One-time payments scan and sign once. Subscriptions scan and sign twice: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. After the callback receives the signed XDR, submit it with the same SDK helpers and record the same payment/subscription aftermath used by web signing.</P>
         <Table
-          headers={["Coming", "What it adds"]}
+          headers={["Deferred", "Why"]}
           rows={[
-            ["SEP-0007 QR", "Encode a payment as a web+stellar: URI + QR on hosted checkout for mobile wallets"],
-            ["WalletConnect v2", "LOBSTR + WalletConnect signing path for mobile payers"],
-            ["Responsive checkout", "Hosted /pay and /subscribe adapt to narrow viewports"],
+            ["Mobile merchant app", "A separate mobile test-merchant/POS app is intentionally out of scope for this web harness"],
+            ["Other wallets", "WalletConnect, LOBSTR, and non-Freighter wallet support remain additive follow-up work"],
+            ["POS-grade hardening", "Production retry/expiry UX and public callback hosting need a dedicated pass"],
           ]}
         />
         <P>Everything runs on Stellar <strong>testnet</strong> today. Treat the deployed contract, SAC, and demo assets as disposable — do not send real value.</P>

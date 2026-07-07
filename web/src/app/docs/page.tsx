@@ -514,30 +514,46 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
     id: "limitations",
     label: "Limitations & mobile",
     description:
-      "What's supported today: Freighter browser signing plus Freighter mobile QR signing for headless checkout flows.",
+      "What's supported today: Freighter browser signing plus Freighter mobile signing over WalletConnect for headless checkout flows.",
     content: (
       <>
         <Note>
-          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. The headless/test-merchant flow can also encode unsigned XDR as a SEP-0007 <Code>web+stellar:tx</Code> QR so Freighter mobile scans, signs, and returns the signed transaction through a callback.
+          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. Headless flows can also offer Freighter mobile signing over a <strong>WalletConnect v2</strong> session: the desktop page shows a WalletConnect QR, the phone scans it, the wallet returns its address at connect, and sign requests are then pushed to the phone.
         </Note>
-        <H3>Freighter mobile QR flow</H3>
-        <Pre>{`import { buildSep7TxUri } from "@stellarpay/sdk";
+        <H3>Freighter mobile flow (WalletConnect)</H3>
+        <Pre>{`import { StellarWalletsKit, Networks } from "@creit.tech/stellar-wallets-kit";
+import {
+  WalletConnectModule, WALLET_CONNECT_ID, WalletConnectTargetChain,
+} from "@creit.tech/stellar-wallets-kit/modules/wallet-connect";
 
-const uri = buildSep7TxUri({
-  xdr,
-  callback: "https://merchant.example/api/mobile-signing/callback",
-  msg: "Sign StellarPay payment",
-  networkPassphrase: TESTNET.networkPassphrase,
+StellarWalletsKit.init({
+  modules: [new WalletConnectModule({
+    projectId: WALLETCONNECT_PROJECT_ID,   // free — https://cloud.reown.com
+    metadata: { name, description, url, icons },
+    allowedChains: [WalletConnectTargetChain.TESTNET],
+  })],
+  selectedWalletId: WALLET_CONNECT_ID,
+  network: Networks.TESTNET,
 });
 
-// Render \`uri\` as a QR code. Freighter mobile scans and signs it.`}</Pre>
-        <P>One-time payments scan and sign once. Subscriptions scan and sign twice: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. After the callback receives the signed XDR, submit it with the same SDK helpers and record the same payment/subscription aftermath used by web signing.</P>
+// Opens the WalletConnect QR modal; resolves with the wallet's
+// address once the customer scans + approves in Freighter mobile.
+const { address } = await StellarWalletsKit.fetchAddress();
+
+// Only now build the XDR — the payer address is required for
+// Soroban simulation. Then push the sign request to the phone:
+const xdr = await client.buildPayXdr(address, merchant, amount, linkId);
+const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
+  networkPassphrase: TESTNET.networkPassphrase, address,
+});
+await client.submitAndWait(signedTxXdr);`}</Pre>
+        <P>The address is discovered from the wallet at scan time — never typed or pasted. One-time payments prompt one signature on the phone. Subscriptions reuse the same session for sequential prompts: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. Submission and the payment/subscription aftermath are identical to web signing.</P>
         <Table
           headers={["Deferred", "Why"]}
           rows={[
             ["Mobile merchant app", "A separate mobile test-merchant/POS app is intentionally out of scope for this web harness"],
-            ["Other wallets", "WalletConnect, LOBSTR, and non-Freighter wallet support remain additive follow-up work"],
-            ["POS-grade hardening", "Production retry/expiry UX and public callback hosting need a dedicated pass"],
+            ["Other wallets", "LOBSTR and other WalletConnect-capable wallets remain additive follow-up work"],
+            ["POS-grade hardening", "Production session expiry/retry UX needs a dedicated pass"],
           ]}
         />
         <P>Everything runs on Stellar <strong>testnet</strong> today. Treat the deployed contract, SAC, and demo assets as disposable — do not send real value.</P>

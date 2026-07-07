@@ -18,10 +18,6 @@ export {
 } from "./schedule";
 export type { Interval, IntervalUnit, CatchUp } from "./schedule";
 
-// SEP-0007 helpers for mobile wallet QR signing.
-export { buildSep7TxUri } from "./sep7";
-export type { Sep7TxOptions } from "./sep7";
-
 // Standardized resource IDs (3.2) — typed ULID external ids + Snowflake u64.
 export { ulid, newId, snowflakeU64 } from "./ids";
 

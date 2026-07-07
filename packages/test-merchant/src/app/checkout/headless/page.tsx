@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
-import { MobileFreighterQr, type MobileSigningSession } from "@/components/mobile-freighter-qr";
+import { connectMobileWallet, signWithMobileWallet } from "@/lib/mobile-wallet";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -16,12 +16,11 @@ const AMOUNT = parseUsdc("7.00");
 const AMOUNT_STR = AMOUNT.toString();
 
 type Step = "preparing" | "ready" | "connecting" | "setup" | "signing" | "submitting" | "success" | "error";
+type Mode = "browser" | "mobile";
 
 type CheckoutLink = {
   numericId: string;
 };
-
-type MobileSessionResponse = MobileSigningSession;
 
 async function sign(xdr: string, address: string): Promise<string> {
   const result = await signTransaction(xdr, {
@@ -38,10 +37,9 @@ function client() {
 
 export default function HeadlessCheckoutPage() {
   const [step, setStep] = useState<Step>("preparing");
+  const [mode, setMode] = useState<Mode>("browser");
   const [link, setLink] = useState<CheckoutLink | null>(null);
   const [payer, setPayer] = useState("");
-  const [mobileWallet, setMobileWallet] = useState("");
-  const [mobileSession, setMobileSession] = useState<MobileSigningSession | null>(null);
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
 
@@ -50,11 +48,11 @@ export default function HeadlessCheckoutPage() {
       case "preparing":
         return "Preparing checkout...";
       case "connecting":
-        return "Connecting wallet...";
+        return mode === "mobile" ? "Scan the QR with Freighter mobile..." : "Connecting wallet...";
       case "setup":
         return "Checking USDC setup...";
       case "signing":
-        return "Waiting for Freighter signature...";
+        return mode === "mobile" ? "Confirm the payment on your phone..." : "Waiting for Freighter signature...";
       case "submitting":
         return "Submitting payment...";
       case "success":
@@ -64,7 +62,7 @@ export default function HeadlessCheckoutPage() {
       default:
         return "Ready";
     }
-  }, [step]);
+  }, [step, mode]);
 
   useEffect(() => {
     // The merchant already provisioned this link; reference it, don't create one.
@@ -77,10 +75,51 @@ export default function HeadlessCheckoutPage() {
     setStep("ready");
   }, []);
 
+  // The browser and mobile flows run the exact same SDK calls — they differ
+  // only in how the payer address is discovered and who signs each XDR.
+  async function runPay(address: string, signXdr: (xdr: string) => Promise<string>) {
+    if (!link) return;
+    setPayer(address);
+    const c = client();
+
+    setStep("setup");
+    const trustlineXdr = await c.buildTrustlineXdr(address);
+    if (trustlineXdr) {
+      const trustlineSigned = await signXdr(trustlineXdr);
+      await c.submitAndWait(trustlineSigned);
+    }
+
+    setStep("signing");
+    const payXdr = await c.buildPayXdr(
+      address,
+      MERCHANT_ADDRESS,
+      AMOUNT,
+      BigInt(link.numericId),
+    );
+    const signedPayXdr = await signXdr(payXdr);
+
+    setStep("submitting");
+    const hash = await c.submitAndWait(signedPayXdr);
+    // Headless pattern (2k): record the settled payment via the SDK —
+    // /api/events sends CORS headers, so no server-side proxy is needed.
+    c.recordPaymentSettled({
+      txHash: hash,
+      merchant: MERCHANT_ADDRESS,
+      amount: AMOUNT_STR,
+      linkId: link.numericId,
+      payerName: getDemoCustomer().name,
+      payerEmail: getDemoCustomer().email,
+      payerWallet: address,
+    }).catch(() => {});
+    setTxHash(hash);
+    setStep("success");
+  }
+
   async function handlePay() {
     if (!link) return;
 
     setError("");
+    setMode("browser");
     setStep("connecting");
 
     try {
@@ -95,104 +134,36 @@ export default function HeadlessCheckoutPage() {
 
       const access = await requestAccess();
       if ("error" in access) throw new Error(access.error);
-      setPayer(access.address);
 
-      const c = client();
-
-      setStep("setup");
-      const trustlineXdr = await c.buildTrustlineXdr(access.address);
-      if (trustlineXdr) {
-        const trustlineSigned = await sign(trustlineXdr, access.address);
-        await c.submitAndWait(trustlineSigned);
-      }
-
-      setStep("signing");
-      const payXdr = await c.buildPayXdr(
-        access.address,
-        MERCHANT_ADDRESS,
-        AMOUNT,
-        BigInt(link.numericId),
-      );
-      const signedPayXdr = await sign(payXdr, access.address);
-
-      setStep("submitting");
-      const hash = await c.submitAndWait(signedPayXdr);
-      // Headless pattern (2k): record the settled payment via the SDK —
-      // /api/events sends CORS headers, so no server-side proxy is needed.
-      c.recordPaymentSettled({
-        txHash: hash,
-        merchant: MERCHANT_ADDRESS,
-        amount: AMOUNT_STR,
-        linkId: link.numericId,
-        payerName: getDemoCustomer().name,
-        payerEmail: getDemoCustomer().email,
-        payerWallet: access.address,
-      }).catch(() => {});
-      setTxHash(hash);
-      setStep("success");
+      await runPay(access.address, (xdr) => sign(xdr, access.address));
     } catch (e) {
       setError(String(e));
       setStep("error");
     }
   }
 
+  // Freighter mobile over WalletConnect (2.5a/3.4a): the QR is the pairing
+  // URI; the wallet returns its address at connect, then the pay XDR is built
+  // with the real payer address and signed on the phone.
   async function handleMobilePay() {
     if (!link) return;
 
     setError("");
-    setMobileSession(null);
-    setStep("setup");
+    setMode("mobile");
+    setStep("connecting");
 
     try {
       if (!MERCHANT_ADDRESS) {
         throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
       }
-      if (!mobileWallet.trim()) {
-        throw new Error("Paste the public key from the Freighter mobile wallet that will scan this QR.");
-      }
 
-      const address = mobileWallet.trim();
-      setPayer(address);
-      const c = client();
-
-      const trustlineXdr = await c.buildTrustlineXdr(address);
-      if (trustlineXdr) {
-        throw new Error("This mobile wallet needs a USDC trustline first. Add the test USDC trustline in Freighter, then generate the QR again.");
-      }
-
-      const payXdr = await c.buildPayXdr(address, MERCHANT_ADDRESS, AMOUNT, BigInt(link.numericId));
-      const customer = getDemoCustomer();
-      const res = await fetch("/api/mobile-signing", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind: "payment",
-          xdr: payXdr,
-          message: "Pay 7.00 USDC to Stellar Roast with StellarPay",
-          context: {
-            merchant: MERCHANT_ADDRESS,
-            amount: AMOUNT_STR,
-            linkId: link.numericId,
-            payerName: customer.name,
-            payerEmail: customer.email,
-            payerWallet: address,
-          },
-        }),
-      });
-      const body = await res.json() as MobileSessionResponse & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? "Failed to create mobile signing session");
-      setMobileSession(body);
-      setStep("signing");
+      const address = await connectMobileWallet();
+      await runPay(address, (xdr) => signWithMobileWallet(xdr, address));
     } catch (e) {
       setError(String(e));
       setStep("error");
     }
   }
-
-  const handleMobileSettled = useCallback((status: { txHash?: string }) => {
-    if (status.txHash) setTxHash(status.txHash);
-    setStep("success");
-  }, []);
 
   const isWorking = step === "preparing" || step === "connecting" || step === "setup" || step === "signing" || step === "submitting";
   const canPay = (step === "ready" || step === "error") && Boolean(link);
@@ -288,32 +259,18 @@ export default function HeadlessCheckoutPage() {
             </div>
 
             <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
-              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Freighter mobile QR</p>
-              <input
-                value={mobileWallet}
-                onChange={(e) => setMobileWallet(e.target.value)}
-                placeholder="Paste mobile wallet public key (G...)"
-                disabled={isWorking}
-                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 8, border: "1px solid #d6d3d1", fontSize: 13, marginBottom: 10 }}
-              />
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Pay from your phone</p>
               <button
                 onClick={canPay ? handleMobilePay : undefined}
                 disabled={!canPay}
                 style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #1c1917", cursor: canPay ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: canPay ? "#fff" : "#f5f5f4", color: canPay ? "#1c1917" : "#a8a29e" }}
               >
-                Generate QR for mobile Freighter
+                Pay with Freighter mobile (scan QR)
               </button>
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "#a8a29e", lineHeight: 1.5 }}>
-                The phone scans in Freighter and signs once. The callback submits and records the same payment event as the browser flow.
+                A WalletConnect QR opens — scan it in Freighter mobile, approve the connection, then confirm the payment on your phone. Same settlement and receipt as the browser flow.
               </p>
             </div>
-
-            <MobileFreighterQr
-              session={mobileSession}
-              title="Scan to pay"
-              description="Open Freighter mobile, scan this QR, and approve the StellarPay payment transaction."
-              onSettled={handleMobileSettled}
-            />
 
             <button
               onClick={canPay ? handlePay : undefined}

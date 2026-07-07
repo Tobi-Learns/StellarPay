@@ -514,19 +514,46 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
     id: "limitations",
     label: "Limitations & mobile",
     description:
-      "What's supported today — Freighter browser signing — and what's coming next, including mobile and QR checkout.",
+      "What's supported today: Freighter browser signing plus Freighter mobile signing over WalletConnect for headless checkout flows.",
     content: (
       <>
         <Note>
-          <strong>Signing is browser-wallet only today.</strong> The SDK returns unsigned XDR and you bring the signature — the current supported path is <Code>Freighter</Code> in a desktop browser. The hosted checkout pages require a browser wallet too.
+          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. Headless flows can also offer Freighter mobile signing over a <strong>WalletConnect v2</strong> session: the desktop page shows a WalletConnect QR, the phone scans it, the wallet returns its address at connect, and sign requests are then pushed to the phone.
         </Note>
-        <P>Planned for Phase 5 (additive — no breaking changes to the calls above):</P>
+        <H3>Freighter mobile flow (WalletConnect)</H3>
+        <Pre>{`import { StellarWalletsKit, Networks } from "@creit.tech/stellar-wallets-kit";
+import {
+  WalletConnectModule, WALLET_CONNECT_ID, WalletConnectTargetChain,
+} from "@creit.tech/stellar-wallets-kit/modules/wallet-connect";
+
+StellarWalletsKit.init({
+  modules: [new WalletConnectModule({
+    projectId: WALLETCONNECT_PROJECT_ID,   // free — https://cloud.reown.com
+    metadata: { name, description, url, icons },
+    allowedChains: [WalletConnectTargetChain.TESTNET],
+  })],
+  selectedWalletId: WALLET_CONNECT_ID,
+  network: Networks.TESTNET,
+});
+
+// Opens the WalletConnect QR modal; resolves with the wallet's
+// address once the customer scans + approves in Freighter mobile.
+const { address } = await StellarWalletsKit.fetchAddress();
+
+// Only now build the XDR — the payer address is required for
+// Soroban simulation. Then push the sign request to the phone:
+const xdr = await client.buildPayXdr(address, merchant, amount, linkId);
+const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
+  networkPassphrase: TESTNET.networkPassphrase, address,
+});
+await client.submitAndWait(signedTxXdr);`}</Pre>
+        <P>The address is discovered from the wallet at scan time — never typed or pasted. One-time payments prompt one signature on the phone. Subscriptions reuse the same session for sequential prompts: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. Submission and the payment/subscription aftermath are identical to web signing.</P>
         <Table
-          headers={["Coming", "What it adds"]}
+          headers={["Deferred", "Why"]}
           rows={[
-            ["SEP-0007 QR", "Encode a payment as a web+stellar: URI + QR on hosted checkout for mobile wallets"],
-            ["WalletConnect v2", "LOBSTR + WalletConnect signing path for mobile payers"],
-            ["Responsive checkout", "Hosted /pay and /subscribe adapt to narrow viewports"],
+            ["Mobile merchant app", "A separate mobile test-merchant/POS app is intentionally out of scope for this web harness"],
+            ["Other wallets", "LOBSTR and other WalletConnect-capable wallets remain additive follow-up work"],
+            ["POS-grade hardening", "Production session expiry/retry UX needs a dedicated pass"],
           ]}
         />
         <P>Everything runs on Stellar <strong>testnet</strong> today. Treat the deployed contract, SAC, and demo assets as disposable — do not send real value.</P>

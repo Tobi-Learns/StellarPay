@@ -13,6 +13,7 @@ import {
   type Interval,
 } from "@stellarpay/sdk";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
+import { connectMobileWallet, signWithMobileWallet } from "@/lib/mobile-wallet";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -34,6 +35,7 @@ type Step =
   | "registering"
   | "success"
   | "error";
+type Mode = "browser" | "mobile";
 
 async function sign(xdr: string, address: string): Promise<string> {
   const result = await signTransaction(xdr, {
@@ -50,6 +52,7 @@ function client() {
 
 export default function HeadlessSubscribePage() {
   const [step, setStep] = useState<Step>("idle");
+  const [mode, setMode] = useState<Mode>("browser");
   const [subscriber, setSubscriber] = useState("");
   const [planId, setPlanId] = useState<bigint | null>(null);
   const [subId, setSubId] = useState<bigint | null>(null);
@@ -58,13 +61,13 @@ export default function HeadlessSubscribePage() {
   const statusLabel = useMemo(() => {
     switch (step) {
       case "connecting":
-        return "Connecting wallet...";
+        return mode === "mobile" ? "Scan the QR with Freighter mobile..." : "Connecting wallet...";
       case "setup":
         return "Checking USDC trustline...";
       case "approving":
-        return "Approving spending cap...";
+        return mode === "mobile" ? "Confirm the spending cap on your phone..." : "Approving spending cap...";
       case "subscribing":
-        return "Creating subscription...";
+        return mode === "mobile" ? "Confirm the subscription on your phone..." : "Creating subscription...";
       case "registering":
         return "Registering subscription...";
       case "success":
@@ -74,24 +77,94 @@ export default function HeadlessSubscribePage() {
       default:
         return "Ready";
     }
-  }, [step]);
+  }, [step, mode]);
 
   const approveDone = step === "subscribing" || step === "registering" || step === "success";
   const subscribeDone = step === "registering" || step === "success";
   const isWorking = step !== "idle" && step !== "error" && step !== "success";
   const canSubscribe = step === "idle" || step === "error";
 
+  // The browser and mobile flows run the exact same SDK calls — they differ
+  // only in how the subscriber address is discovered and who signs each XDR.
+  async function runSubscribe(address: string, signXdr: (xdr: string) => Promise<string>) {
+    setSubscriber(address);
+
+    // 3.3d — duplicate-subscription guard: a second Active sub on this plan
+    // would double-charge. Cross-origin, so check via the server proxy.
+    const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
+    if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
+      throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
+    }
+
+    const c = client();
+
+    setStep("setup");
+    const trustlineXdr = await c.buildTrustlineXdr(address);
+    if (trustlineXdr) {
+      const signedTrustlineXdr = await signXdr(trustlineXdr);
+      await c.submitAndWait(signedTrustlineXdr);
+    }
+
+    // Reference the merchant's pre-provisioned plan — no lookup, no create.
+    const resolvedPlanId = BigInt(PLAN_ID);
+    setPlanId(resolvedPlanId);
+
+    setStep("approving");
+    const ledger = await c.getCurrentLedger();
+    const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
+    const signedApproveXdr = await signXdr(approveXdr);
+    await c.submitAndWait(signedApproveXdr);
+
+    setStep("subscribing");
+    const anchor = new Date();
+    const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
+    // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
+    const createdSubId = snowflakeU64();
+    const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt, createdSubId);
+    const signedSubscribeXdr = await signXdr(subscribeXdr);
+    await c.submitAndWait(signedSubscribeXdr);
+    setSubId(createdSubId);
+
+    setStep("registering");
+    const registerSubRes = await fetch("/api/subscribe", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        onChainId: String(createdSubId),
+        planOnChainId: String(resolvedPlanId),
+        subscriber: address,
+        merchant: MERCHANT_ADDRESS,
+        amount: AMOUNT_STR,
+        anchorAt: anchor.toISOString(),
+        payerName: getDemoCustomer().name,
+        payerEmail: getDemoCustomer().email,
+      }),
+    });
+
+    if (!registerSubRes.ok) {
+      const body = await registerSubRes.json() as { error?: string };
+      throw new Error(body.error ?? "Failed to register subscription");
+    }
+
+    setStep("success");
+  }
+
+  function assertConfigured() {
+    if (!MERCHANT_ADDRESS) {
+      throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
+    }
+    if (!PLAN_ID) {
+      throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_HEADLESS (run scripts/seed-test-merchant.mjs).");
+    }
+  }
+
   async function handleSubscribe() {
     setError("");
+    setMode("browser");
     setStep("connecting");
 
     try {
-      if (!MERCHANT_ADDRESS) {
-        throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
-      }
-      if (!PLAN_ID) {
-        throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_HEADLESS (run scripts/seed-test-merchant.mjs).");
-      }
+      assertConfigured();
 
       const conn = await isConnected();
       if ("error" in conn || !conn.isConnected) {
@@ -101,66 +174,27 @@ export default function HeadlessSubscribePage() {
       const access = await requestAccess();
       if ("error" in access) throw new Error(access.error);
       const address = access.address;
-      setSubscriber(address);
 
-      // 3.3d — duplicate-subscription guard: a second Active sub on this plan
-      // would double-charge. Cross-origin, so check via the server proxy.
-      const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
-      if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
-        throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
-      }
+      await runSubscribe(address, (xdr) => sign(xdr, address));
+    } catch (e) {
+      setError(String(e));
+      setStep("error");
+    }
+  }
 
-      const c = client();
+  // Freighter mobile over WalletConnect (2.5b/3.4b): one QR scan establishes
+  // the session and returns the subscriber address; the approve and subscribe
+  // transactions then arrive on the phone as sequential sign prompts.
+  async function handleMobileSubscribe() {
+    setError("");
+    setMode("mobile");
+    setStep("connecting");
 
-      setStep("setup");
-      const trustlineXdr = await c.buildTrustlineXdr(address);
-      if (trustlineXdr) {
-        const signedTrustlineXdr = await sign(trustlineXdr, address);
-        await c.submitAndWait(signedTrustlineXdr);
-      }
+    try {
+      assertConfigured();
 
-      // Reference the merchant's pre-provisioned plan — no lookup, no create.
-      const resolvedPlanId = BigInt(PLAN_ID);
-      setPlanId(resolvedPlanId);
-
-      setStep("approving");
-      const ledger = await c.getCurrentLedger();
-      const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
-      const signedApproveXdr = await sign(approveXdr, address);
-      await c.submitAndWait(signedApproveXdr);
-
-      setStep("subscribing");
-      const anchor = new Date();
-      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
-      // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
-      const createdSubId = snowflakeU64();
-      const subscribeXdr = await c.buildSubscribeXdr(address, resolvedPlanId, nextChargeAt, createdSubId);
-      const signedSubscribeXdr = await sign(subscribeXdr, address);
-      await c.submitAndWait(signedSubscribeXdr);
-      setSubId(createdSubId);
-
-      setStep("registering");
-      const registerSubRes = await fetch("/api/subscribe", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          onChainId: String(createdSubId),
-          planOnChainId: String(resolvedPlanId),
-          subscriber: address,
-          merchant: MERCHANT_ADDRESS,
-          amount: AMOUNT_STR,
-          anchorAt: anchor.toISOString(),
-          payerName: getDemoCustomer().name,
-          payerEmail: getDemoCustomer().email,
-        }),
-      });
-
-      if (!registerSubRes.ok) {
-        const body = await registerSubRes.json() as { error?: string };
-        throw new Error(body.error ?? "Failed to register subscription");
-      }
-
-      setStep("success");
+      const address = await connectMobileWallet();
+      await runSubscribe(address, (xdr) => signWithMobileWallet(xdr, address));
     } catch (e) {
       setError(String(e));
       setStep("error");
@@ -266,6 +300,20 @@ export default function HeadlessSubscribePage() {
               ))}
             </div>
 
+            <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
+              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Subscribe from your phone</p>
+              <button
+                onClick={canSubscribe ? handleMobileSubscribe : undefined}
+                disabled={!canSubscribe}
+                style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #047857", cursor: canSubscribe ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: canSubscribe ? "#fff" : "#f5f5f4", color: canSubscribe ? "#047857" : "#a8a29e" }}
+              >
+                Subscribe with Freighter mobile (scan QR)
+              </button>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#a8a29e", lineHeight: 1.5 }}>
+                One WalletConnect QR scan connects your wallet, then Freighter mobile prompts twice: approve the capped allowance, then confirm the subscription.
+              </p>
+            </div>
+
             <button
               onClick={canSubscribe ? handleSubscribe : undefined}
               disabled={!canSubscribe}
@@ -281,13 +329,13 @@ export default function HeadlessSubscribePage() {
                 color: step === "error" ? "#dc2626" : canSubscribe ? "#fff" : "#a8a29e",
               }}
             >
-              {step === "error" ? "Try again" : isWorking ? "Working..." : "Subscribe - 3 USDC/mo"}
+              {step === "error" ? "Try again in browser" : isWorking ? "Working..." : "Subscribe in browser - 3 USDC/mo"}
             </button>
 
             {error && <p style={{ fontSize: 12, color: "#dc2626", margin: 0 }}>{error}</p>}
 
             <p style={{ fontSize: 11, color: "#a8a29e", margin: 0, lineHeight: 1.5 }}>
-              This page uses raw SDK builders and Freighter signing directly; no hosted checkout and no embedded widget.
+              This page uses raw SDK builders with either browser Freighter signing or Freighter mobile QR signing; no hosted checkout and no embedded widget.
             </p>
           </div>
         </div>

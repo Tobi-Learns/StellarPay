@@ -87,7 +87,7 @@ const client = new StellarPayClient({
 
 // Build a pay XDR, sign it with the payer's wallet, submit on-chain
 const xdr    = await client.buildPayXdr(payer, merchant, parseUsdc("5.00"), linkId);
-const signed = await signWithWallet(xdr);      // Freighter today — see Limitations
+const signed = await signWithWallet(xdr);      // Freighter, or a phone via Mobile signing
 const hash   = await client.submitAndWait(signed);`}</Pre>
         <P>Server-side calls that write to the hosted DB (creating links/plans, listing) authenticate with an API key generated from <Code>/app/developers</Code>. On-chain writes need no key — they&apos;re authorized by the wallet signature. Amounts are always <Code>bigint</Code> stroops (7 decimals); use <Code>parseUsdc</Code>/<Code>formatUsdc</Code> to convert.</P>
       </>
@@ -132,10 +132,10 @@ if (trustlineXdr) await client.submitAndWait(await signWithWallet(trustlineXdr))
       "Accept a single payment three ways — hosted link, embedded button, or fully headless — all settling the same on-chain pay call.",
     content: (
       <>
-        <P>Three integration patterns, simplest first. All settle the same <Code>pay</Code> contract call.</P>
+        <P>Three integration patterns, simplest first. All settle the same <Code>pay</Code> contract call, and all three surfaces show a <strong>mobile scan-to-pay QR by default</strong> next to the browser-signing path (see the Mobile signing section for how it works).</P>
 
         <H3>1 · Hosted link</H3>
-        <P>Create a payment link server-side, then redirect the customer to the hosted checkout at <Code>/pay/:numericId</Code>. Zero front-end payment code.</P>
+        <P>Create a payment link server-side, then redirect the customer to the hosted checkout at <Code>/pay/:numericId</Code>. Zero front-end payment code. The hosted page renders the mobile QR and the browser-sign button together — the customer picks.</P>
         <Pre>{`import { snowflakeU64, parseUsdc } from "@stellarpay/sdk";
 
 const link = await client.createPaymentLink({
@@ -149,12 +149,13 @@ const link = await client.createPaymentLink({
 // Redirect the customer to:  \`\${apiBase}/pay/\${link.numericId}\``}</Pre>
 
         <H3>2 · Embedded button</H3>
-        <P>Drop <Code>{"<StellarPayButton>"}</Code> onto your page. It connects Freighter, auto-sets up the trustline, then builds, signs, and submits the payment inline — no signing code on your side.</P>
+        <P>Drop <Code>{"<StellarPayButton>"}</Code> onto your page. It connects Freighter, auto-sets up the trustline, then builds, signs, and submits the payment inline — no signing code on your side. Pass <Code>walletConnectProjectId</Code> and it renders as a panel: mobile QR (displayed by default) + the web-sign button.</P>
         <Pre>{`import { StellarPayButton } from "@stellarpay/sdk/react";
 import { TESTNET, parseUsdc } from "@stellarpay/sdk";
 
 <StellarPayButton
   config={{ ...TESTNET, apiBase: "https://your-app.vercel.app" }}
+  walletConnectProjectId={WC_PROJECT_ID}  // optional — adds the scan-to-pay QR
   merchant="G..."
   amount={parseUsdc("5.00")}
   linkId={BigInt(numericId)}
@@ -165,7 +166,7 @@ import { TESTNET, parseUsdc } from "@stellarpay/sdk";
         <P>When <Code>payerName</Code>/<Code>payerEmail</Code> are set, the button fire-and-forgets <Code>recordPaymentSettled</Code> after settlement, so the merchant dashboard and webhooks carry customer identity. <Code>signXdr</Code> is an optional escape hatch for non-Freighter wallets.</P>
 
         <H3>3 · Headless</H3>
-        <P>Build your own UI with the raw SDK methods — full control over UX.</P>
+        <P>Build your own UI with the raw SDK methods — full control over UX. For the mobile path, <Code>MobileWalletConnect</Code> supplies the payer address at QR scan and signs on the phone (see Mobile signing); the code below is the browser-wallet variant.</P>
         <Pre>{`import { parseUsdc } from "@stellarpay/sdk";
 
 // 1. Trustline (see StellarPayClient), then build + submit the payment
@@ -193,7 +194,7 @@ await client.recordPaymentSettled({
       "Set up recurring billing on real calendar time: the subscriber approves a spending allowance once, then the platform charges each cycle automatically.",
     content: (
       <>
-        <P>Billing runs on real calendar time. A plan stores its interval as <Code>{"{ unit, count }"}</Code> (e.g. monthly); the contract only enforces a cadence floor (<Code>min_interval_secs</Code>) and the backend owns exact dates. After the subscriber approves a spending allowance once, the platform charges each cycle automatically — no further subscriber signature.</P>
+        <P>Billing runs on real calendar time. A plan stores its interval as <Code>{"{ unit, count }"}</Code> (e.g. monthly); the contract only enforces a cadence floor (<Code>min_interval_secs</Code>) and the backend owns exact dates. After the subscriber approves a spending allowance once, the platform charges each cycle automatically — no further subscriber signature. Subscription checkouts also show the mobile QR by default: one scan connects the wallet, then <Code>approve</Code> and <Code>subscribe</Code> arrive as two sequential prompts on the phone over the same session.</P>
 
         <H3>Create a plan</H3>
         <Pre>{`import { minIntervalSeconds, snowflakeU64, parseUsdc } from "@stellarpay/sdk";
@@ -511,14 +512,14 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
     ),
   },
   {
-    id: "limitations",
-    label: "Limitations & mobile",
+    id: "mobile",
+    label: "Mobile signing",
     description:
-      "What's supported today: Freighter browser signing plus mobile signing over WalletConnect — inline QR displayed by default on every checkout surface.",
+      "Scan-to-pay from a mobile wallet: every checkout surface renders a WalletConnect QR by default alongside the web-sign button.",
     content: (
       <>
         <Note>
-          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. Every checkout surface (hosted, embedded, headless) can also render a <strong>WalletConnect v2</strong> QR by default alongside the web-sign button: the phone scans it, the wallet returns its address at connect, and sign requests are then pushed to the phone.
+          <strong>Every checkout surface is mobile-ready.</strong> Hosted, embedded, and headless checkouts render a <strong>WalletConnect v2</strong> QR by default next to the web-sign button: the customer scans it with Freighter mobile, the wallet returns its address at connect, and sign requests are pushed to the phone. Browser signing via the Freighter extension works unchanged alongside it.
         </Note>
         <H3>Mobile signing — SDK module</H3>
         <Pre>{`import { MobileWalletConnect, TESTNET } from "@stellarpay/sdk";

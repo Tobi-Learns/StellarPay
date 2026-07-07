@@ -3,7 +3,7 @@ import { BrandLogo } from "@/components/brand";
 
 const proofPoints = [
   "Hosted links, embedded button, and headless SDK",
-  "One-time checkout plus recurring subscription pulls",
+  "One-time checkout and recurring pulls, with scan-to-pay mobile QR by default",
   "Live billing automation, webhooks, API keys, and dashboard records",
 ];
 
@@ -11,24 +11,24 @@ const integrationPaths = [
   {
     label: "Hosted checkout",
     title: "Create a link. Send it anywhere.",
-    body: "Use StellarPay's hosted checkout for one-time payments or subscriptions without building payment UI.",
+    body: "Use StellarPay's hosted checkout for one-time payments or subscriptions without building payment UI. Customers sign in the browser or scan the on-page QR with their mobile wallet.",
   },
   {
     label: "Embedded button",
     title: "Drop payments into your own flow.",
-    body: "Add a React button that connects Freighter, prepares trustlines, signs, submits, and records customer identity.",
+    body: "Add a React component that connects the browser wallet, prepares trustlines, signs, submits, and records customer identity — and renders a scan-to-pay QR alongside the button.",
   },
   {
     label: "Headless SDK",
     title: "Own the interface end to end.",
-    body: "Build custom checkout with XDR builders, typed API records, HMAC webhooks, and on-chain settlement primitives.",
+    body: "Build custom checkout with XDR builders, mobile WalletConnect sessions, typed API records, HMAC webhooks, and on-chain settlement primitives.",
   },
 ];
 
 const steps = [
   ["Create", "Connect a merchant wallet and create a payment link or subscription plan."],
   ["Share", "Send a hosted URL, embed a button, or route customers through your own SDK-powered checkout."],
-  ["Sign", "Customers sign once to pay. Subscriptions sign approve plus subscribe, then renew without repeat signatures."],
+  ["Sign", "Customers sign once to pay — in the browser, or by scanning the checkout QR and confirming on their phone. Subscriptions sign approve plus subscribe, then renew without repeat signatures."],
   ["Settle", "Funds move wallet to wallet on Stellar; events, receipts, webhooks, and dashboard records update around the transaction."],
 ];
 

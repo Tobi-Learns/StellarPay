@@ -1,7 +1,10 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Networks } from "@stellar/stellar-sdk";
+import { MobileWalletConnect } from "@stellarpay/sdk";
+import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { useWallet } from "@/lib/wallet-context";
 import {
   getPlan,
@@ -24,6 +27,8 @@ import {
 } from "@/lib/billing-schedule";
 
 type Step = "idle" | "approving" | "subscribing" | "done" | "error";
+
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
 type RegisteredPlan = {
   onChainId: string;
@@ -86,6 +91,18 @@ export default function SubscribeCheckoutPage({
   const [payerName, setPayerName] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
 
+  // Mobile QR path (2.6c) — one WalletConnect session per page visit; both
+  // signatures (approve + subscribe) arrive as sequential prompts on the phone.
+  const connectorRef = useRef<MobileWalletConnect | null>(null);
+  if (WC_PROJECT_ID && !connectorRef.current) {
+    connectorRef.current = new MobileWalletConnect({
+      projectId: WC_PROJECT_ID,
+      networkPassphrase: Networks.TESTNET,
+    });
+  }
+  const [mobileAddress, setMobileAddress] = useState<string | null>(null);
+  const mobileStartedRef = useRef(false);
+
   const plan = loaded?.plan ?? null;
 
   useEffect(() => {
@@ -95,14 +112,10 @@ export default function SubscribeCheckoutPage({
       .finally(() => setLoading(false));
   }, [planId]);
 
-  async function handleSubscribe() {
-    if (!address || !loaded) return;
+  // Browser and mobile run the same subscribe chain; only the signer differs.
+  async function runSubscribe(subscriber: string, sign: (xdr: string) => Promise<string>) {
+    if (!loaded) return;
     const { plan, interval, intervalLabel } = loaded;
-    if (!payerName.trim() || !payerEmail.trim()) {
-      setStep("error");
-      setErrorMsg("Please enter your name and email before subscribing.");
-      return;
-    }
 
     setStep("approving");
     setErrorMsg("");
@@ -113,8 +126,8 @@ export default function SubscribeCheckoutPage({
       const cap = plan.amount * BigInt(1000);
       const expiry = currentLedger + 1_000_000;
 
-      const approveXdr = await buildApproveXdr(address, cap, expiry);
-      const signedApprove = await signTransaction(approveXdr);
+      const approveXdr = await buildApproveXdr(subscriber, cap, expiry);
+      const signedApprove = await sign(approveXdr);
       await submitAndWaitWithResult(signedApprove);
 
       // Step 2 — subscribe. Anchor the schedule to now and pass the first
@@ -124,8 +137,8 @@ export default function SubscribeCheckoutPage({
       const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, interval));
       // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
       const subIdSnowflake = snowflakeU64();
-      const subscribeXdr = await buildSubscribeXdr(address, BigInt(planId), nextChargeAt, subIdSnowflake);
-      const signedSubscribe = await signTransaction(subscribeXdr);
+      const subscribeXdr = await buildSubscribeXdr(subscriber, BigInt(planId), nextChargeAt, subIdSnowflake);
+      const signedSubscribe = await sign(subscribeXdr);
       const subscribeTxHash = await submitAndWait(signedSubscribe);
 
       const subId = subIdSnowflake.toString();
@@ -133,7 +146,7 @@ export default function SubscribeCheckoutPage({
       const subData = {
         onChainId: subId,
         planOnChainId: planId,
-        subscriber: address,
+        subscriber,
         merchant: plan.merchant,
         amount: plan.amount.toString(),
         interval: plan.min_interval_secs,
@@ -175,7 +188,30 @@ export default function SubscribeCheckoutPage({
     }
   }
 
+  function formComplete() {
+    return Boolean(payerName.trim() && payerEmail.trim());
+  }
+
+  async function handleSubscribe() {
+    if (!address || !loaded) return;
+    if (!formComplete()) {
+      setStep("error");
+      setErrorMsg("Please enter your name and email before subscribing.");
+      return;
+    }
+    await runSubscribe(address, signTransaction);
+  }
+
   const busy = step === "approving" || step === "subscribing";
+
+  // Start the mobile subscribe chain once the wallet is connected AND the
+  // identity form is complete — whichever happens last.
+  useEffect(() => {
+    if (!mobileAddress || mobileStartedRef.current || !formComplete() || !loaded) return;
+    mobileStartedRef.current = true;
+    void runSubscribe(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileAddress, payerName, payerEmail, loaded]);
 
   if (loading) {
     return (
@@ -246,6 +282,29 @@ export default function SubscribeCheckoutPage({
 
           {step === "error" && (
             <p className="text-xs text-red-500 mb-3">{errorMsg}</p>
+          )}
+
+          {/* Mobile QR by default alongside the web-sign button (2.6c) */}
+          {connectorRef.current && (
+            <>
+              <MobileWalletQr
+                connector={connectorRef.current}
+                onConnected={(addr) => setMobileAddress(addr)}
+                title="Scan to subscribe from your phone"
+                description="Scan with Freighter mobile, approve the connection, then confirm both prompts: the spending cap, then the subscription."
+                connectedLabel={
+                  mobileAddress && !formComplete()
+                    ? "Connected — enter your name and email above to continue"
+                    : "Connected — confirm both prompts on your phone"
+                }
+                size={180}
+              />
+              <div className="flex items-center gap-2 my-4">
+                <span className="flex-1 h-px bg-neutral-200" />
+                <span className="text-xs text-neutral-400">or subscribe in this browser</span>
+                <span className="flex-1 h-px bg-neutral-200" />
+              </div>
+            </>
           )}
 
           {address ? (

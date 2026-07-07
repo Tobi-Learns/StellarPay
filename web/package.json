@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "npm --prefix ../packages/sdk install --include=dev && npm --prefix ../packages/sdk run build && prisma generate && next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -13,6 +13,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@stellar/stellar-sdk": "^16.0.1",
+    "@stellarpay/sdk": "file:../packages/sdk",
     "next": "16.2.9",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",

@@ -18,6 +18,16 @@ export {
 } from "./schedule";
 export type { Interval, IntervalUnit, CatchUp } from "./schedule";
 
+// Mobile wallet signing over WalletConnect v2 (2.6) — inline-QR pairing +
+// stellar_signXDR over the session. React QR component lives in ./react.
+export { MobileWalletConnect } from "./mobile";
+export type {
+  MobileWalletConfig,
+  MobileWalletMetadata,
+  MobilePairing,
+  OriginSupport,
+} from "./mobile";
+
 // Standardized resource IDs (3.2) — typed ULID external ids + Snowflake u64.
 export { ulid, newId, snowflakeU64 } from "./ids";
 

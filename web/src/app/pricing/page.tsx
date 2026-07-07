@@ -20,7 +20,7 @@ const comparisonRows = [
   {
     provider: "StellarPay",
     fee: "1%",
-    detail: "Contract-enforced fee split, wallet-to-wallet settlement, one-time payments, subscriptions, SDK, webhooks.",
+    detail: "Contract-enforced fee split, wallet-to-wallet settlement, one-time payments, subscriptions, scan-to-pay mobile QR, SDK, webhooks.",
     emphasis: true,
   },
   {

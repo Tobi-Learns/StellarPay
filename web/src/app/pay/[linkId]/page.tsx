@@ -1,10 +1,15 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Networks } from "@stellar/stellar-sdk";
+import { MobileWalletConnect } from "@stellarpay/sdk";
+import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { useWallet } from "@/lib/wallet-context";
 import { buildPayXdr, submitAndWait, formatUsdc, truncateAddress } from "@/lib/stellar";
 import { decodeLink } from "@/lib/payment-links";
+
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
 interface MerchantProfile { displayName?: string | null; verified?: boolean }
 
@@ -29,6 +34,19 @@ export default function CheckoutPage({
   const [payerEmail, setPayerEmail] = useState("");
   const [link, setLink] = useState<LinkData | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "invalid">("loading");
+
+  // Mobile QR path (2.6c) — one WalletConnect session per page visit. The QR
+  // renders by default alongside the web-sign button; the wallet returns its
+  // address at scan/connect, then the pay XDR is signed on the phone.
+  const connectorRef = useRef<MobileWalletConnect | null>(null);
+  if (WC_PROJECT_ID && !connectorRef.current) {
+    connectorRef.current = new MobileWalletConnect({
+      projectId: WC_PROJECT_ID,
+      networkPassphrase: Networks.TESTNET,
+    });
+  }
+  const [mobileAddress, setMobileAddress] = useState<string | null>(null);
+  const mobileStartedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -80,6 +98,18 @@ export default function CheckoutPage({
       .catch(() => {});
   }, [link?.merchant]);
 
+  // Start the mobile payment once the wallet is connected AND the identity
+  // form is complete — whichever happens last. If the customer scans before
+  // typing, the sign request fires as soon as the form is filled.
+  // (Must sit above the early returns below — hooks can't be conditional.)
+  useEffect(() => {
+    if (!mobileAddress || mobileStartedRef.current || !link) return;
+    if (!payerName.trim() || !payerEmail.trim()) return;
+    mobileStartedRef.current = true;
+    void settle(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileAddress, payerName, payerEmail, link]);
+
   if (loadState === "loading") {
     return (
       <div className="flex flex-1 items-center justify-center min-h-[calc(100vh-57px)]">
@@ -102,13 +132,9 @@ export default function CheckoutPage({
 
   const amountDisplay = formatUsdc(BigInt(link.amount));
 
-  async function handlePay() {
-    if (!address || !link) return;
-    if (!payerName.trim() || !payerEmail.trim()) {
-      setStatus("error");
-      setErrorMsg("Please enter your name and email before paying.");
-      return;
-    }
+  // Browser and mobile run the same settlement path; only the signer differs.
+  async function settle(payerAddr: string, sign: (xdr: string) => Promise<string>) {
+    if (!link) return;
 
     setStatus("signing");
     setErrorMsg("");
@@ -116,8 +142,8 @@ export default function CheckoutPage({
     try {
       if (!link.numericId) throw new Error("Payment link is missing its numeric id.");
 
-      const xdr = await buildPayXdr(address, link.merchant, BigInt(link.amount), BigInt(link.numericId));
-      const signedTxXdr = await signTransaction(xdr);
+      const xdr = await buildPayXdr(payerAddr, link.merchant, BigInt(link.amount), BigInt(link.numericId));
+      const signedTxXdr = await sign(xdr);
 
       setStatus("submitting");
       const txHash = await submitAndWait(signedTxXdr);
@@ -136,7 +162,7 @@ export default function CheckoutPage({
             productName: link.productName,
             payerName: payerName.trim(),
             payerEmail: payerEmail.trim(),
-            payerWallet: address,
+            payerWallet: payerAddr,
           },
         }),
       }).catch(() => {});
@@ -152,6 +178,20 @@ export default function CheckoutPage({
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Payment failed");
     }
+  }
+
+  function formComplete() {
+    return Boolean(payerName.trim() && payerEmail.trim());
+  }
+
+  async function handlePay() {
+    if (!address || !link) return;
+    if (!formComplete()) {
+      setStatus("error");
+      setErrorMsg("Please enter your name and email before paying.");
+      return;
+    }
+    await settle(address, signTransaction);
   }
 
   const busy = status === "signing" || status === "submitting";
@@ -201,6 +241,29 @@ export default function CheckoutPage({
 
           {status === "error" && (
             <p className="text-xs text-red-500 mb-3">{errorMsg}</p>
+          )}
+
+          {/* Mobile QR by default alongside the web-sign button (2.6c) */}
+          {connectorRef.current && (
+            <>
+              <MobileWalletQr
+                connector={connectorRef.current}
+                onConnected={(addr) => setMobileAddress(addr)}
+                title="Scan to pay from your phone"
+                description="Scan with Freighter mobile, approve the connection, then confirm the payment on your phone."
+                connectedLabel={
+                  mobileAddress && !formComplete()
+                    ? "Connected — enter your name and email above to continue"
+                    : "Connected — confirm the payment on your phone"
+                }
+                size={180}
+              />
+              <div className="flex items-center gap-2 my-4">
+                <span className="flex-1 h-px bg-neutral-200" />
+                <span className="text-xs text-neutral-400">or pay in this browser</span>
+                <span className="flex-1 h-px bg-neutral-200" />
+              </div>
+            </>
           )}
 
           {address ? (

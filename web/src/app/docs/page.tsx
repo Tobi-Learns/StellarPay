@@ -514,40 +514,46 @@ formatUsdc(15_000_000n) // → "1.50"`}</Pre>
     id: "limitations",
     label: "Limitations & mobile",
     description:
-      "What's supported today: Freighter browser signing plus Freighter mobile signing over WalletConnect for headless checkout flows.",
+      "What's supported today: Freighter browser signing plus mobile signing over WalletConnect — inline QR displayed by default on every checkout surface.",
     content: (
       <>
         <Note>
-          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. Headless flows can also offer Freighter mobile signing over a <strong>WalletConnect v2</strong> session: the desktop page shows a WalletConnect QR, the phone scans it, the wallet returns its address at connect, and sign requests are then pushed to the phone.
+          <strong>Freighter is the supported wallet path today.</strong> Browser checkout signs directly with Freighter. Every checkout surface (hosted, embedded, headless) can also render a <strong>WalletConnect v2</strong> QR by default alongside the web-sign button: the phone scans it, the wallet returns its address at connect, and sign requests are then pushed to the phone.
         </Note>
-        <H3>Freighter mobile flow (WalletConnect)</H3>
-        <Pre>{`import { StellarWalletsKit, Networks } from "@creit.tech/stellar-wallets-kit";
-import {
-  WalletConnectModule, WALLET_CONNECT_ID, WalletConnectTargetChain,
-} from "@creit.tech/stellar-wallets-kit/modules/wallet-connect";
+        <H3>Mobile signing — SDK module</H3>
+        <Pre>{`import { MobileWalletConnect, TESTNET } from "@stellarpay/sdk";
 
-StellarWalletsKit.init({
-  modules: [new WalletConnectModule({
-    projectId: WALLETCONNECT_PROJECT_ID,   // free — https://cloud.reown.com
-    metadata: { name, description, url, icons },
-    allowedChains: [WalletConnectTargetChain.TESTNET],
-  })],
-  selectedWalletId: WALLET_CONNECT_ID,
-  network: Networks.TESTNET,
+const mobile = new MobileWalletConnect({
+  projectId: WALLETCONNECT_PROJECT_ID,   // free — https://cloud.reown.com
+  networkPassphrase: TESTNET.networkPassphrase,
 });
 
-// Opens the WalletConnect QR modal; resolves with the wallet's
+// Render pairing.uri as a QR; approval resolves with the wallet's
 // address once the customer scans + approves in Freighter mobile.
-const { address } = await StellarWalletsKit.fetchAddress();
+const pairing = await mobile.createPairing();
+showQr(pairing.uri);                      // expires ~5 min (pairing.expiresAt)
+const address = await pairing.approval;
 
-// Only now build the XDR — the payer address is required for
-// Soroban simulation. Then push the sign request to the phone:
+// Only now build the XDR — the payer address is required for Soroban
+// simulation. Each signXdr call pops a sign prompt on the phone:
 const xdr = await client.buildPayXdr(address, merchant, amount, linkId);
-const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, {
-  networkPassphrase: TESTNET.networkPassphrase, address,
-});
-await client.submitAndWait(signedTxXdr);`}</Pre>
-        <P>The address is discovered from the wallet at scan time — never typed or pasted. One-time payments prompt one signature on the phone. Subscriptions reuse the same session for sequential prompts: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. Submission and the payment/subscription aftermath are identical to web signing.</P>
+const signed = await mobile.signXdr(xdr);
+await client.submitAndWait(signed);`}</Pre>
+        <H3>Inline QR component (React)</H3>
+        <Pre>{`import { MobileWalletQr, StellarPayButton } from "@stellarpay/sdk/react";
+
+// Drop-in: QR displayed by default, countdown + refresh on expiry,
+// hands the connected address to your flow.
+<MobileWalletQr connector={mobile} onConnected={(address) => runPay(address)} />
+
+// Or zero-config: give the button a projectId and it renders the
+// mobile QR alongside the web-sign button automatically.
+<StellarPayButton
+  config={{ ...TESTNET, apiBase }}
+  walletConnectProjectId={WALLETCONNECT_PROJECT_ID}
+  merchant={merchant} amount={amount} linkId={linkId}
+/>`}</Pre>
+        <P>The address is discovered from the wallet at scan time — never typed or pasted. One-time payments prompt one signature on the phone. Subscriptions reuse the same session for sequential prompts: first the SAC allowance approval, then the StellarPay <Code>subscribe</Code> transaction. Submission and the payment/subscription aftermath are identical to web signing. <strong>Mobile signing requires the dapp to be served over HTTPS on a real domain</strong> — Freighter mobile refuses to sign for http/localhost pages, and the QR component shows an explanatory note instead of a dead QR on such origins.</P>
         <Table
           headers={["Deferred", "Why"]}
           rows={[

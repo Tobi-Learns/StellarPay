@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   StellarPayClient,
+  MobileWalletConnect,
   TESTNET,
   parseUsdc,
   firstNextChargeAt,
@@ -11,11 +12,13 @@ import {
   snowflakeU64,
   type Interval,
 } from "@stellarpay/sdk";
+import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS!;
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 // Pre-provisioned plan (onChainId) from the seed — see scripts/seed-test-merchant.mjs.
 // INTERVAL must match the seeded plan's cadence so firstNextChargeAt clears the
 // contract's subscribe floor check.
@@ -42,14 +45,87 @@ export default function SubscribeEmbeddedPage() {
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
 
+  // Mobile QR (3.5b via 2.6): displayed by default; one WalletConnect session
+  // per page visit — approve + subscribe arrive as sequential phone prompts.
+  const connectorRef = useRef<MobileWalletConnect | null>(null);
+  if (WC_PROJECT_ID && !connectorRef.current) {
+    connectorRef.current = new MobileWalletConnect({
+      projectId: WC_PROJECT_ID,
+      networkPassphrase: TESTNET.networkPassphrase,
+    });
+  }
+
+  // Browser and mobile run the same subscribe chain; only the signer differs.
+  async function runSubscribe(address: string, signXdr: (xdr: string) => Promise<string>) {
+    // 3.3d — duplicate-subscription guard: a second Active sub on this plan
+    // would double-charge. Cross-origin, so check via the server proxy.
+    const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
+    if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
+      throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
+    }
+
+    // Auto-setup trustline if wallet doesn't have one — must happen before any SAC call.
+    setStep("setup");
+    const c = sdkClient();
+    const trustlineXdr = await c.buildTrustlineXdr(address);
+    if (trustlineXdr) {
+      const tlSigned = await signXdr(trustlineXdr);
+      await c.submitAndWait(tlSigned);
+    }
+
+    // Reference the merchant's pre-provisioned plan — no lookup, no create.
+    const planId = BigInt(PLAN_ID);
+
+    // Step 1: Approve SAC spending cap
+    setStep("approving");
+    const ledger = await c.getCurrentLedger();
+    const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
+    await c.submitAndWait(await signXdr(approveXdr));
+
+    // Step 2: Subscribe — first charge runs immediately on-chain.
+    // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
+    setStep("subscribing");
+    const anchor = new Date();
+    const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
+    const id = snowflakeU64();
+    const subscribeXdr = await c.buildSubscribeXdr(address, planId, nextChargeAt, id);
+    await c.submitAndWait(await signXdr(subscribeXdr));
+    setSubId(id);
+
+    const regRes = await fetch("/api/subscribe", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        onChainId: String(id),
+        planOnChainId: String(planId),
+        subscriber: address,
+        merchant: MERCHANT_ADDRESS,
+        amount: AMOUNT_STR,
+        anchorAt: anchor.toISOString(),
+        payerName: getDemoCustomer().name,
+        payerEmail: getDemoCustomer().email,
+      }),
+    });
+    if (!regRes.ok) {
+      const { error } = await regRes.json() as { error?: string };
+      throw new Error(error ?? "Failed to register subscription");
+    }
+
+    setStep("success");
+  }
+
+  function assertConfigured() {
+    if (!PLAN_ID) {
+      throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_EMBEDDED (run scripts/seed-test-merchant.mjs).");
+    }
+  }
+
   async function handleSubscribe() {
     setStep("connecting");
     setError("");
 
     try {
-      if (!PLAN_ID) {
-        throw new Error("Demo catalog not configured — set NEXT_PUBLIC_DEMO_PLAN_EMBEDDED (run scripts/seed-test-merchant.mjs).");
-      }
+      assertConfigured();
 
       const conn = await isConnected();
       if ("error" in conn || !conn.isConnected) throw new Error("Freighter is not installed");
@@ -57,61 +133,20 @@ export default function SubscribeEmbeddedPage() {
       if ("error" in access) throw new Error(access.error);
       const address = access.address;
 
-      // 3.3d — duplicate-subscription guard: a second Active sub on this plan
-      // would double-charge. Cross-origin, so check via the server proxy.
-      const existing = (await (await fetch(`/api/subscribe?subscriber=${encodeURIComponent(address)}`)).json()) as { planOnChainId: string; status: string }[];
-      if (Array.isArray(existing) && existing.some((s) => s.planOnChainId === PLAN_ID && s.status === "Active")) {
-        throw new Error("You already have an active subscription to this plan — manage it under My subscriptions.");
-      }
+      await runSubscribe(address, (xdr) => sign(xdr, address));
+    } catch (e) {
+      setError(String(e));
+      setStep("error");
+    }
+  }
 
-      // Auto-setup trustline if wallet doesn't have one — must happen before any SAC call.
-      setStep("setup");
-      const c = sdkClient();
-      const trustlineXdr = await c.buildTrustlineXdr(address);
-      if (trustlineXdr) {
-        const tlSigned = await sign(trustlineXdr, address);
-        await c.submitAndWait(tlSigned);
-      }
+  async function handleMobileConnected(address: string) {
+    setStep("connecting");
+    setError("");
 
-      // Reference the merchant's pre-provisioned plan — no lookup, no create.
-      const planId = BigInt(PLAN_ID);
-
-      // Step 1: Approve SAC spending cap
-      setStep("approving");
-      const ledger = await c.getCurrentLedger();
-      const approveXdr = await c.buildApproveXdr(address, AMOUNT * 1000n, ledger + 535_680);
-      await c.submitAndWait(await sign(approveXdr, address));
-
-      // Step 2: Subscribe — first charge runs immediately on-chain.
-      // Caller-supplied non-sequential sub id (Snowflake); contract asserts uniqueness (3.2e).
-      setStep("subscribing");
-      const anchor = new Date();
-      const nextChargeAt = toUnixSeconds(firstNextChargeAt(anchor, INTERVAL));
-      const id = snowflakeU64();
-      const subscribeXdr = await c.buildSubscribeXdr(address, planId, nextChargeAt, id);
-      await c.submitAndWait(await sign(subscribeXdr, address));
-      setSubId(id);
-
-      const regRes = await fetch("/api/subscribe", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          onChainId: String(id),
-          planOnChainId: String(planId),
-          subscriber: address,
-          merchant: MERCHANT_ADDRESS,
-          amount: AMOUNT_STR,
-          anchorAt: anchor.toISOString(),
-          payerName: getDemoCustomer().name,
-          payerEmail: getDemoCustomer().email,
-        }),
-      });
-      if (!regRes.ok) {
-        const { error } = await regRes.json() as { error?: string };
-        throw new Error(error ?? "Failed to register subscription");
-      }
-
-      setStep("success");
+    try {
+      assertConfigured();
+      await runSubscribe(address, (xdr) => connectorRef.current!.signXdr(xdr));
     } catch (e) {
       setError(String(e));
       setStep("error");
@@ -258,6 +293,27 @@ export default function SubscribeEmbeddedPage() {
               </div>
             ))}
           </div>
+
+          {/* Mobile QR displayed by default (3.5b) */}
+          {connectorRef.current && (
+            <>
+              <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff", marginBottom: 16 }}>
+                <MobileWalletQr
+                  connector={connectorRef.current}
+                  onConnected={handleMobileConnected}
+                  title="Scan to subscribe from your phone"
+                  description="Scan with Freighter mobile, approve the connection, then confirm both prompts on your phone."
+                  connectedLabel="Connected — confirm both prompts on your phone"
+                  size={180}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+                <span style={{ fontSize: 11, color: "#a8a29e" }}>or subscribe in this browser</span>
+                <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+              </div>
+            </>
+          )}
 
           <button
             onClick={step === "idle" || step === "error" ? handleSubscribe : undefined}

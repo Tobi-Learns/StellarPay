@@ -8,6 +8,7 @@ import { useDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 // Pre-provisioned link (numericId) from the seed — see scripts/seed-test-merchant.mjs.
 const LINK_NUMERIC_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_EMBEDDED ?? "";
 
@@ -141,16 +142,19 @@ export default function EmbeddedCheckoutPage() {
               {pageState === "ready" && linkNumericId !== null && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <p style={{ color: "#57534e", fontSize: 14, margin: 0, lineHeight: 1.6 }}>
-                    Click below to connect your Freighter wallet and complete the payment. No extra steps — the button handles everything.
+                    Scan the QR with your mobile wallet, or click the button to pay with the Freighter browser extension. The component handles everything either way.
                   </p>
 
                   <DemoCustomerCard />
 
                   {/* payerName/payerEmail props (2k): the button records the
                       payment.settled event with the platform itself — no
-                      separate event post from this page. */}
+                      separate event post from this page.
+                      walletConnectProjectId (2.6d/3.5b): renders the mobile QR
+                      by default alongside the web-sign button. */}
                   <StellarPayButton
                     config={{ ...TESTNET, apiBase: API_BASE }}
+                    walletConnectProjectId={WC_PROJECT_ID || undefined}
                     merchant={MERCHANT}
                     amount={AMOUNT}
                     linkId={linkNumericId}

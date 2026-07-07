@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
 import {
@@ -12,8 +12,11 @@ import {
   snowflakeU64,
   type Interval,
 } from "@stellarpay/sdk";
+import { MobileWalletConnect } from "@stellarpay/sdk";
+import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
-import { connectMobileWallet, signWithMobileWallet } from "@/lib/mobile-wallet";
+
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
@@ -57,6 +60,16 @@ export default function HeadlessSubscribePage() {
   const [planId, setPlanId] = useState<bigint | null>(null);
   const [subId, setSubId] = useState<bigint | null>(null);
   const [error, setError] = useState("");
+
+  // Mobile QR (3.5b via 2.6): displayed by default; one WalletConnect session
+  // per page visit — approve + subscribe arrive as sequential phone prompts.
+  const connectorRef = useRef<MobileWalletConnect | null>(null);
+  if (WC_PROJECT_ID && !connectorRef.current) {
+    connectorRef.current = new MobileWalletConnect({
+      projectId: WC_PROJECT_ID,
+      networkPassphrase: TESTNET.networkPassphrase,
+    });
+  }
 
   const statusLabel = useMemo(() => {
     switch (step) {
@@ -182,19 +195,17 @@ export default function HeadlessSubscribePage() {
     }
   }
 
-  // Freighter mobile over WalletConnect (2.5b/3.4b): one QR scan establishes
-  // the session and returns the subscriber address; the approve and subscribe
-  // transactions then arrive on the phone as sequential sign prompts.
-  async function handleMobileSubscribe() {
+  // Freighter mobile over WalletConnect (3.5a): the inline QR is displayed by
+  // default; once connected, approve + subscribe arrive as sequential sign
+  // prompts on the phone over the same session.
+  async function handleMobileConnected(address: string) {
     setError("");
     setMode("mobile");
     setStep("connecting");
 
     try {
       assertConfigured();
-
-      const address = await connectMobileWallet();
-      await runSubscribe(address, (xdr) => signWithMobileWallet(xdr, address));
+      await runSubscribe(address, (xdr) => connectorRef.current!.signXdr(xdr));
     } catch (e) {
       setError(String(e));
       setStep("error");
@@ -300,19 +311,26 @@ export default function HeadlessSubscribePage() {
               ))}
             </div>
 
-            <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
-              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Subscribe from your phone</p>
-              <button
-                onClick={canSubscribe ? handleMobileSubscribe : undefined}
-                disabled={!canSubscribe}
-                style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #047857", cursor: canSubscribe ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: canSubscribe ? "#fff" : "#f5f5f4", color: canSubscribe ? "#047857" : "#a8a29e" }}
-              >
-                Subscribe with Freighter mobile (scan QR)
-              </button>
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#a8a29e", lineHeight: 1.5 }}>
-                One WalletConnect QR scan connects your wallet, then Freighter mobile prompts twice: approve the capped allowance, then confirm the subscription.
-              </p>
-            </div>
+            {/* Mobile QR displayed by default (3.5a) */}
+            {connectorRef.current && (
+              <>
+                <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
+                  <MobileWalletQr
+                    connector={connectorRef.current}
+                    onConnected={handleMobileConnected}
+                    title="Scan to subscribe from your phone"
+                    description="Scan with Freighter mobile, approve the connection, then confirm both prompts: the spending cap, then the subscription."
+                    connectedLabel="Connected — confirm both prompts on your phone"
+                    size={190}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+                  <span style={{ fontSize: 11, color: "#a8a29e" }}>or subscribe in this browser</span>
+                  <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+                </div>
+              </>
+            )}
 
             <button
               onClick={canSubscribe ? handleSubscribe : undefined}

@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { isConnected, requestAccess, signTransaction } from "@stellar/freighter-api";
-import { StellarPayClient, TESTNET, parseUsdc } from "@stellarpay/sdk";
+import { StellarPayClient, MobileWalletConnect, TESTNET, parseUsdc } from "@stellarpay/sdk";
+import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { getDemoCustomer, DemoCustomerCard } from "@/lib/demo-customer";
-import { connectMobileWallet, signWithMobileWallet } from "@/lib/mobile-wallet";
 
 const API_BASE = process.env.NEXT_PUBLIC_STELLARPAY_API_BASE ?? "http://localhost:3000";
 const MERCHANT_ADDRESS = process.env.NEXT_PUBLIC_MERCHANT_ADDRESS ?? "";
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 // Pre-provisioned link (numericId) from the seed — see scripts/seed-test-merchant.mjs.
 const LINK_NUMERIC_ID = process.env.NEXT_PUBLIC_DEMO_CHECKOUT_HEADLESS ?? "";
 
@@ -42,6 +43,16 @@ export default function HeadlessCheckoutPage() {
   const [payer, setPayer] = useState("");
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
+
+  // Mobile QR (3.5a): displayed by default via the SDK component; one
+  // WalletConnect session per page visit.
+  const connectorRef = useRef<MobileWalletConnect | null>(null);
+  if (WC_PROJECT_ID && !connectorRef.current) {
+    connectorRef.current = new MobileWalletConnect({
+      projectId: WC_PROJECT_ID,
+      networkPassphrase: TESTNET.networkPassphrase,
+    });
+  }
 
   const stepLabel = useMemo(() => {
     switch (step) {
@@ -142,10 +153,10 @@ export default function HeadlessCheckoutPage() {
     }
   }
 
-  // Freighter mobile over WalletConnect (2.5a/3.4a): the QR is the pairing
-  // URI; the wallet returns its address at connect, then the pay XDR is built
-  // with the real payer address and signed on the phone.
-  async function handleMobilePay() {
+  // Freighter mobile over WalletConnect (3.5a): the inline QR is displayed by
+  // default; once the wallet approves the connection this runs the same pay
+  // flow with the phone as the signer.
+  async function handleMobileConnected(address: string) {
     if (!link) return;
 
     setError("");
@@ -156,9 +167,7 @@ export default function HeadlessCheckoutPage() {
       if (!MERCHANT_ADDRESS) {
         throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
       }
-
-      const address = await connectMobileWallet();
-      await runPay(address, (xdr) => signWithMobileWallet(xdr, address));
+      await runPay(address, (xdr) => connectorRef.current!.signXdr(xdr));
     } catch (e) {
       setError(String(e));
       setStep("error");
@@ -258,19 +267,26 @@ export default function HeadlessCheckoutPage() {
               )}
             </div>
 
-            <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
-              <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: "#1c1917" }}>Pay from your phone</p>
-              <button
-                onClick={canPay ? handleMobilePay : undefined}
-                disabled={!canPay}
-                style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #1c1917", cursor: canPay ? "pointer" : "default", fontWeight: 700, fontSize: 13, background: canPay ? "#fff" : "#f5f5f4", color: canPay ? "#1c1917" : "#a8a29e" }}
-              >
-                Pay with Freighter mobile (scan QR)
-              </button>
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#a8a29e", lineHeight: 1.5 }}>
-                A WalletConnect QR opens — scan it in Freighter mobile, approve the connection, then confirm the payment on your phone. Same settlement and receipt as the browser flow.
-              </p>
-            </div>
+            {/* Mobile QR displayed by default (3.5a) */}
+            {connectorRef.current && (
+              <>
+                <div style={{ border: "1px solid #e7e5e4", borderRadius: 10, padding: 16, background: "#fff" }}>
+                  <MobileWalletQr
+                    connector={connectorRef.current}
+                    onConnected={handleMobileConnected}
+                    title="Scan to pay from your phone"
+                    description="Scan with Freighter mobile, approve the connection, then confirm the payment on your phone."
+                    connectedLabel="Connected — confirm the payment on your phone"
+                    size={190}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+                  <span style={{ fontSize: 11, color: "#a8a29e" }}>or pay in this browser</span>
+                  <span style={{ flex: 1, height: 1, background: "#e7e5e4" }} />
+                </div>
+              </>
+            )}
 
             <button
               onClick={canPay ? handlePay : undefined}

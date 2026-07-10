@@ -134,9 +134,14 @@ export class MobileWalletConnect {
   async createPairing(): Promise<MobilePairing> {
     const client = await this.client();
 
-    // Drop any session from a previous pairing on this instance — sign
-    // requests must only ever target the session the visible QR created.
-    await this.disconnect().catch(() => {});
+    // Clear ALL existing sessions before pairing, not just this instance's.
+    // SignClient.init restores every previously-approved session from local
+    // storage on each page load, and they otherwise never get cleaned up —
+    // they pile up in the wallet's "Connected Apps" list, and once several
+    // stale sessions exist the sign-request response stops routing back
+    // reliably (checkout hangs at "signing"). A checkout wants exactly one
+    // live session, so start every pairing from a clean slate.
+    await this.disconnectAll().catch(() => {});
 
     const { uri, approval } = await client.connect({
       requiredNamespaces: {
@@ -198,5 +203,24 @@ export class MobileWalletConnect {
     await client
       .disconnect({ topic, reason: { code: 6000, message: "Checkout closed" } })
       .catch(() => {});
+  }
+
+  /**
+   * Disconnect every session the underlying client knows about — including
+   * ones restored from local storage on a fresh page load, which `disconnect`
+   * (scoped to this instance) can't see. Used to enforce a single clean
+   * session per checkout and to clear accumulated stale sessions. Best-effort:
+   * a failed per-session disconnect never rejects the whole call.
+   */
+  async disconnectAll(): Promise<void> {
+    const client = await this.client();
+    this.session = null;
+    this.address = null;
+    const sessions = client.session.getAll();
+    await Promise.allSettled(
+      sessions.map((s) =>
+        client.disconnect({ topic: s.topic, reason: { code: 6000, message: "Checkout reset" } }),
+      ),
+    );
   }
 }

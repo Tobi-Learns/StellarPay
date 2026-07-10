@@ -277,6 +277,17 @@ export function MobileWalletQr({
     setGeneration((g) => g + 1);
   }, []);
 
+  // Disconnect this checkout's WalletConnect session when the component
+  // unmounts (customer closes/navigates away), so sessions don't linger in
+  // the wallet's "Connected Apps" and accumulate across visits. Keyed only on
+  // `connector` (stable), so it runs on unmount — not on QR refresh, where
+  // createPairing already resets sessions.
+  useEffect(() => {
+    return () => {
+      void connector.disconnect();
+    };
+  }, [connector]);
+
   useEffect(() => {
     const support = MobileWalletConnect.isSupportedOrigin();
     if (!support.ok) {

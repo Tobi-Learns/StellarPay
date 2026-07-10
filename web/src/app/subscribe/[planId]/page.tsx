@@ -18,6 +18,7 @@ import {
   type Plan,
 } from "@/lib/stellar";
 import { saveSubscription } from "@/lib/plans";
+import { recordDurable } from "@/lib/settlement-outbox";
 import { snowflakeU64 } from "@/lib/ids";
 import {
   firstNextChargeAt,
@@ -164,21 +165,24 @@ export default function SubscribeCheckoutPage({
 
       saveSubscription({ ...subData, planId });
 
-      fetch("/api/subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(subData),
-      }).then(() =>
-        fetch("/api/events", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "subscription.created",
-            txHash: subscribeTxHash,
-            data: { subId, planId, productName: loaded.productName, payerName: payerName.trim(), payerEmail: payerEmail.trim() },
-          }),
-        })
-      ).catch(() => {});
+      // Durable record (open bug B2): the subscription exists on-chain, so the
+      // DB registration + created event must not be lost to a transient failure.
+      // Register the sub first (the event resolves its subscription FK from it),
+      // then the event; both retry inline and persist to the outbox on failure.
+      await recordDurable({
+        key: `sub:${subId}`,
+        url: "/api/subscriptions",
+        body: subData,
+      });
+      await recordDurable({
+        key: `event:${subscribeTxHash}`,
+        url: "/api/events",
+        body: {
+          type: "subscription.created",
+          txHash: subscribeTxHash,
+          data: { subId, planId, productName: loaded.productName, payerName: payerName.trim(), payerEmail: payerEmail.trim() },
+        },
+      });
 
       setStep("done");
       router.push(`/portal/${subId}`);

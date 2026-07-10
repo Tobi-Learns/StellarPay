@@ -59,6 +59,12 @@ export class StellarPayClient {
    * registered endpoints. Idempotent by txHash: recording the same payment
    * twice is a no-op. Include `payerName`/`payerEmail` so the merchant
    * dashboard shows who paid.
+   *
+   * The payment has already settled on-chain by the time this is called, so the
+   * record must not be lost to a transient failure. This retries a few times
+   * before throwing (open bug B2 / StellarPay): callers that await it get
+   * resilience for free, and even fire-and-forget callers survive a brief blip.
+   * A failure after all retries still throws so callers can decide what to do.
    */
   async recordPaymentSettled(opts: {
     txHash: string;
@@ -72,7 +78,19 @@ export class StellarPayClient {
     payerWallet?: string;
   }): Promise<void> {
     const { txHash, ...data } = opts;
-    await this._post("/api/events", { type: "payment.settled", txHash, data });
+    const body = { type: "payment.settled", txHash, data };
+    const backoffs = [0, 500, 1500]; // 3 attempts, ~2s worst case
+    let lastErr: unknown;
+    for (let i = 0; i < backoffs.length; i++) {
+      if (backoffs[i]) await new Promise((r) => setTimeout(r, backoffs[i]));
+      try {
+        await this._post("/api/events", body);
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("recordPaymentSettled failed");
   }
 
   /**

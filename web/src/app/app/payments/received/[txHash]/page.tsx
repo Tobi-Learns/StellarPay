@@ -16,6 +16,7 @@ type PaymentDetail = {
     merchant?: string;
     linkId?: string;
     productName?: string;
+    signingMethod?: "mobile" | "web";
   };
   paymentLink?: {
     extId: string;
@@ -74,6 +75,8 @@ export default function PaymentReceivedManagePage({
   const merchant = link?.merchant ?? payment?.data.merchant ?? "";
   const payerName = payment?.data.payerName || truncateAddress(payment?.data.payerWallet ?? "");
   const payerEmail = payment?.data.payerEmail ?? "";
+  const signingMethod = payment?.data.signingMethod;
+  const paidViaLabel = signingMethod === "mobile" ? "Mobile (QR)" : signingMethod === "web" ? "Web (browser)" : null;
 
   return (
     <div className="max-w-6xl">
@@ -98,7 +101,12 @@ export default function PaymentReceivedManagePage({
                 {productName} · {amount ? formatUsdc(BigInt(amount)) : "0"} USDC · Purchased {formatDateTime(payment.createdAt)}
               </p>
             </div>
-            <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Settled</span>
+            <div className="flex items-center gap-2">
+              {paidViaLabel && (
+                <span className="rounded-full bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-600">{paidViaLabel}</span>
+              )}
+              <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">Settled</span>
+            </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3 mb-6">
@@ -133,6 +141,8 @@ export default function PaymentReceivedManagePage({
                   <dd>{amount ? formatUsdc(BigInt(amount)) : "0"} USDC</dd>
                   <dt className="text-neutral-400">Purchased</dt>
                   <dd>{formatDateTime(payment.createdAt)}</dd>
+                  <dt className="text-neutral-400">Paid via</dt>
+                  <dd>{paidViaLabel ?? "Unknown"}</dd>
                   <dt className="text-neutral-400">Payer wallet</dt>
                   <dd className="font-mono text-xs break-all">{payment.data.payerWallet || "Unavailable"}</dd>
                   <dt className="text-neutral-400">Merchant wallet</dt>

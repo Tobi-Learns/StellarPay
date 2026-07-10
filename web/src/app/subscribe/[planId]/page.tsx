@@ -114,7 +114,11 @@ export default function SubscribeCheckoutPage({
   }, [planId]);
 
   // Browser and mobile run the same subscribe chain; only the signer differs.
-  async function runSubscribe(subscriber: string, sign: (xdr: string) => Promise<string>) {
+  async function runSubscribe(
+    subscriber: string,
+    sign: (xdr: string) => Promise<string>,
+    signingMethod: "mobile" | "web",
+  ) {
     if (!loaded) return;
     const { plan, interval, intervalLabel } = loaded;
 
@@ -160,6 +164,7 @@ export default function SubscribeCheckoutPage({
         periodsCharged: 1,
         payerName: payerName.trim(),
         payerEmail: payerEmail.trim(),
+        signingMethod,
         createdAt: Date.now(),
       };
 
@@ -180,7 +185,7 @@ export default function SubscribeCheckoutPage({
         body: {
           type: "subscription.created",
           txHash: subscribeTxHash,
-          data: { subId, planId, productName: loaded.productName, payerName: payerName.trim(), payerEmail: payerEmail.trim() },
+          data: { subId, planId, productName: loaded.productName, payerName: payerName.trim(), payerEmail: payerEmail.trim(), signingMethod },
         },
       });
 
@@ -203,7 +208,7 @@ export default function SubscribeCheckoutPage({
       setErrorMsg("Please enter your name and email before subscribing.");
       return;
     }
-    await runSubscribe(address, signTransaction);
+    await runSubscribe(address, signTransaction, "web");
   }
 
   const busy = step === "approving" || step === "subscribing";
@@ -213,7 +218,7 @@ export default function SubscribeCheckoutPage({
   useEffect(() => {
     if (!mobileAddress || mobileStartedRef.current || !formComplete() || !loaded) return;
     mobileStartedRef.current = true;
-    void runSubscribe(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr));
+    void runSubscribe(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr), "mobile");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileAddress, payerName, payerEmail, loaded]);
 

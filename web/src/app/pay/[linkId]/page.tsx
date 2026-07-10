@@ -8,6 +8,7 @@ import { MobileWalletQr } from "@stellarpay/sdk/react";
 import { useWallet } from "@/lib/wallet-context";
 import { buildPayXdr, submitAndWait, formatUsdc, truncateAddress } from "@/lib/stellar";
 import { decodeLink } from "@/lib/payment-links";
+import { recordDurable } from "@/lib/settlement-outbox";
 
 const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
@@ -148,10 +149,14 @@ export default function CheckoutPage({
       setStatus("submitting");
       const txHash = await submitAndWait(signedTxXdr);
 
-      fetch("/api/events", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Durable record: the payment has settled on-chain, so this must not be
+      // lost. recordDurable retries inline and persists to the outbox on failure
+      // (self-heals on next app load) instead of the old fire-and-forget POST
+      // that silently dropped records (open bug B2).
+      await recordDurable({
+        key: `event:${txHash}`,
+        url: "/api/events",
+        body: {
           type: "payment.settled",
           txHash,
           paymentLinkId: link.id,
@@ -164,8 +169,8 @@ export default function CheckoutPage({
             payerEmail: payerEmail.trim(),
             payerWallet: payerAddr,
           },
-        }),
-      }).catch(() => {});
+        },
+      });
 
       const qs = new URLSearchParams({
         amount: amountDisplay,

@@ -10,6 +10,7 @@ import {
 import { StellarWalletsKit, Networks, KitEventType } from "@creit.tech/stellar-wallets-kit";
 import { FreighterModule, FREIGHTER_ID } from "@creit.tech/stellar-wallets-kit/modules/freighter";
 import { TransactionBuilder } from "@stellar/stellar-sdk";
+import { flushOutbox } from "./settlement-outbox";
 
 // ── kit init (singleton, browser-only) ───────────────────────────────────────
 
@@ -44,6 +45,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initKit();
     setKitReady(true);
+
+    // Self-heal any settlement records that failed to deliver on a prior visit
+    // (open bug B2): re-attempt every persisted outbox write on app load.
+    void flushOutbox();
 
     // Restore session if wallet was previously connected
     StellarWalletsKit.getAddress()

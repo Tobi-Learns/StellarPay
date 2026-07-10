@@ -277,6 +277,18 @@ export function MobileWalletQr({
   const [generation, setGeneration] = useState(0);
   const connectedRef = useRef(false);
 
+  // The pairing effect runs once (deps [connector, generation]) and awaits the
+  // approval for many seconds, so it must call the *latest* onConnected/onError
+  // — not the ones captured at mount. Callers commonly build these from state
+  // set after mount (e.g. the resolved payment link), and a stale closure would
+  // silently no-op on that state. Keep them in refs, refreshed every render.
+  const onConnectedRef = useRef(onConnected);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onConnectedRef.current = onConnected;
+    onErrorRef.current = onError;
+  });
+
   const refresh = useCallback(() => {
     connectedRef.current = false;
     setGeneration((g) => g + 1);
@@ -334,7 +346,7 @@ export function MobileWalletQr({
         if (!alive) return;
         connectedRef.current = true;
         setPhase("connected");
-        await onConnected(address);
+        await onConnectedRef.current(address);
       } catch (e) {
         if (!alive || connectedRef.current) return;
         const err = e instanceof Error ? e : new Error(String(e));
@@ -345,7 +357,7 @@ export function MobileWalletQr({
         } else {
           setPhase("error");
           setErrorMsg(err.message);
-          onError?.(err);
+          onErrorRef.current?.(err);
         }
       }
     })();

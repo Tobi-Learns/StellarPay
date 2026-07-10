@@ -71,8 +71,12 @@ function dequeue(key: string): void {
  * 409 (idempotent duplicate = already recorded). Network/other errors → false.
  */
 export async function deliverRecord(url: string, body: unknown): Promise<boolean> {
+  // Collapse accidental double slashes in the path (e.g. from a trailing-slash
+  // apiBase) — `//api/events` 308-redirects, which fails a CORS preflight. This
+  // also heals records queued before the apiBase normalization landed.
+  const cleanUrl = url.replace(/([^:])\/{2,}/g, "$1/");
   try {
-    const res = await fetch(url, {
+    const res = await fetch(cleanUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

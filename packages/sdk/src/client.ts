@@ -28,7 +28,13 @@ export class StellarPayClient {
   private readonly sac: Contract;
 
   constructor(config: StellarPayConfig) {
-    this.cfg = config;
+    // Normalize apiBase: strip trailing slashes so `${apiBase}${path}` can't
+    // produce `//api/...`. A double slash makes Vercel (and most hosts) answer
+    // with a 308 redirect, and browsers do NOT follow redirects on a CORS
+    // preflight — so a trailing-slash apiBase silently blocks every cross-origin
+    // POST (e.g. recordPaymentSettled) before it's even sent. Curl hides this
+    // because it follows redirects and ignores CORS.
+    this.cfg = { ...config, apiBase: config.apiBase.replace(/\/+$/, "") };
     this.contract = new Contract(config.contractId);
     this.sac = new Contract(config.sacAddress);
     // Self-heal any settlement record that failed to deliver on a prior visit.

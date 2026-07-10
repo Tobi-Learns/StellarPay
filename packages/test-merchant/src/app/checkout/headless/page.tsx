@@ -88,7 +88,11 @@ export default function HeadlessCheckoutPage() {
 
   // The browser and mobile flows run the exact same SDK calls — they differ
   // only in how the payer address is discovered and who signs each XDR.
-  async function runPay(address: string, signXdr: (xdr: string) => Promise<string>) {
+  async function runPay(
+    address: string,
+    signXdr: (xdr: string) => Promise<string>,
+    signingMethod: "mobile" | "web",
+  ) {
     if (!link) return;
     setPayer(address);
     const c = client();
@@ -121,6 +125,7 @@ export default function HeadlessCheckoutPage() {
       payerName: getDemoCustomer().name,
       payerEmail: getDemoCustomer().email,
       payerWallet: address,
+      signingMethod,
     }).catch(() => {});
     setTxHash(hash);
     setStep("success");
@@ -146,7 +151,7 @@ export default function HeadlessCheckoutPage() {
       const access = await requestAccess();
       if ("error" in access) throw new Error(access.error);
 
-      await runPay(access.address, (xdr) => sign(xdr, access.address));
+      await runPay(access.address, (xdr) => sign(xdr, access.address), "web");
     } catch (e) {
       setError(String(e));
       setStep("error");
@@ -167,7 +172,7 @@ export default function HeadlessCheckoutPage() {
       if (!MERCHANT_ADDRESS) {
         throw new Error("Missing NEXT_PUBLIC_MERCHANT_ADDRESS");
       }
-      await runPay(address, (xdr) => connectorRef.current!.signXdr(xdr));
+      await runPay(address, (xdr) => connectorRef.current!.signXdr(xdr), "mobile");
     } catch (e) {
       setError(String(e));
       setStep("error");

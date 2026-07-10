@@ -20,6 +20,7 @@ import {
   simulateRead,
   makeServer,
 } from "./rpc";
+import { deliverRecord, queueRecord, flushRecords } from "./record-outbox";
 
 export class StellarPayClient {
   private readonly cfg: StellarPayConfig;
@@ -30,6 +31,10 @@ export class StellarPayClient {
     this.cfg = config;
     this.contract = new Contract(config.contractId);
     this.sac = new Contract(config.sacAddress);
+    // Self-heal any settlement record that failed to deliver on a prior visit.
+    // Consumers construct a client per checkout, so this re-attempts pending
+    // records on the next page load (browser-only; no-op server-side).
+    void flushRecords();
   }
 
   // ── One-time payments ───────────────────────────────────────────────────────
@@ -81,18 +86,20 @@ export class StellarPayClient {
   }): Promise<void> {
     const { txHash, ...data } = opts;
     const body = { type: "payment.settled", txHash, data };
-    const backoffs = [0, 500, 1500]; // 3 attempts, ~2s worst case
-    let lastErr: unknown;
+    const url = `${this.cfg.apiBase}/api/events`;
+    // Retry inline (3 attempts, ~2s), then persist to the durable outbox so a
+    // still-failing record survives — flushRecords() re-delivers on the next
+    // client construction. The record must never be lost: the payment already
+    // settled on-chain.
+    const backoffs = [0, 500, 1500];
     for (let i = 0; i < backoffs.length; i++) {
       if (backoffs[i]) await new Promise((r) => setTimeout(r, backoffs[i]));
-      try {
-        await this._post("/api/events", body);
-        return;
-      } catch (err) {
-        lastErr = err;
-      }
+      if (await deliverRecord(url, body)) return;
     }
-    throw lastErr instanceof Error ? lastErr : new Error("recordPaymentSettled failed");
+    if (!queueRecord({ key: `event:${txHash}`, url, body })) {
+      // No storage to persist to (e.g. SSR / storage disabled) — surface it.
+      throw new Error("recordPaymentSettled failed and could not be queued for retry.");
+    }
   }
 
   /**

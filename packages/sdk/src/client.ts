@@ -76,6 +76,8 @@ export class StellarPayClient {
     payerName?: string;
     payerEmail?: string;
     payerWallet?: string;
+    /** How the payer signed — "mobile" (QR/WalletConnect) or "web" (browser extension). */
+    signingMethod?: "mobile" | "web";
   }): Promise<void> {
     const { txHash, ...data } = opts;
     const body = { type: "payment.settled", txHash, data };

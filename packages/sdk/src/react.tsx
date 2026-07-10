@@ -95,7 +95,11 @@ export function StellarPayButton({
   const isLoading = status !== "idle" && status !== "success" && status !== "error";
 
   // The browser and mobile paths run the same flow; only the signer differs.
-  async function runPay(payerAddr: string, sign: (xdr: string) => Promise<string>) {
+  async function runPay(
+    payerAddr: string,
+    sign: (xdr: string) => Promise<string>,
+    signingMethod: "mobile" | "web",
+  ) {
     const c = new StellarPayClient(config);
 
     // Auto-setup trustline if the user's wallet doesn't have one yet.
@@ -127,6 +131,7 @@ export function StellarPayButton({
         payerName,
         payerEmail,
         payerWallet: payerAddr,
+        signingMethod,
       }).catch(() => {});
     }
 
@@ -168,7 +173,7 @@ export function StellarPayButton({
       }
 
       const addr = payerAddr;
-      await runPay(addr, (xdr) => (signXdr ? signXdr(xdr) : signWithFreighter(xdr, addr)));
+      await runPay(addr, (xdr) => (signXdr ? signXdr(xdr) : signWithFreighter(xdr, addr)), "web");
     } catch (err) {
       fail(err);
     }
@@ -176,7 +181,7 @@ export function StellarPayButton({
 
   async function handleMobileConnected(address: string) {
     try {
-      await runPay(address, (xdr) => connectorRef.current!.signXdr(xdr));
+      await runPay(address, (xdr) => connectorRef.current!.signXdr(xdr), "mobile");
     } catch (err) {
       fail(err);
     }

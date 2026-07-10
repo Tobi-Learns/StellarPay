@@ -27,6 +27,19 @@ const PUBLIC_PASSPHRASE = "Public Global Stellar Network ; September 2015";
 const SIGN_METHOD = "stellar_signXDR";
 // WalletConnect pairing proposals expire after 5 minutes.
 const PAIRING_TTL_MS = 5 * 60_000;
+// How long to wait for the phone to respond to a sign request before failing
+// loudly. Without this the request hangs forever if the wallet never answers
+// (e.g. the request never surfaces on the phone) — a silent spinner.
+const SIGN_TIMEOUT_MS = 90_000;
+
+// Diagnostics: prefixed console logs so a stuck mobile signing flow leaves a
+// trail in the desktop console (there is otherwise nothing to debug from).
+// Silent in tests / non-browser.
+function log(event: string, detail?: Record<string, unknown>): void {
+  if (typeof console === "undefined") return;
+  // eslint-disable-next-line no-console
+  console.info(`[stellarpay:mobile] ${event}`, detail ?? "");
+}
 
 export type MobileWalletMetadata = {
   name: string;
@@ -59,6 +72,27 @@ function toError(e: unknown): Error {
   if (e instanceof Error) return e;
   const msg = (e as { message?: string })?.message;
   return new Error(msg || (typeof e === "string" ? e : "Mobile wallet request failed"));
+}
+
+/** Reject with `message` if `p` hasn't settled within `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
+/** Best-effort read of the relay socket state without assuming internals exist. */
+function safeRelayConnected(client: WcClient): boolean | undefined {
+  try {
+    return (client as unknown as { core?: { relayer?: { connected?: boolean } } })
+      .core?.relayer?.connected;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -156,6 +190,7 @@ export class MobileWalletConnect {
     if (!uri) {
       throw new Error("WalletConnect did not return a pairing URI.");
     }
+    log("pairing_created", { chainId: this.chainId, uriChars: uri.length });
 
     return {
       uri,
@@ -167,9 +202,11 @@ export class MobileWalletConnect {
           const address = accounts[0]?.split(":")[2];
           if (!address) throw new Error("Wallet approved the session without a Stellar account.");
           this.address = address;
+          log("session_approved", { topic: session.topic, address, accounts: accounts.length });
           return address;
         })
         .catch((e) => {
+          log("session_rejected", { message: (e as { message?: string })?.message });
           throw toError(e);
         }),
     };
@@ -181,14 +218,41 @@ export class MobileWalletConnect {
       throw new Error("No connected mobile wallet session — scan the QR first.");
     }
     const client = await this.client();
+    const topic = this.session.topic;
+    // A session can be dropped by the wallet while the desktop still holds a
+    // stale reference; requesting on a dead topic hangs silently. Surface it.
+    const known = client.session.keys.includes(topic);
+    const relayConnected = safeRelayConnected(client);
+    log("sign_request →", { method: SIGN_METHOD, chainId: this.chainId, topic, sessionKnown: known, relayConnected, xdrChars: xdr.length });
+    if (!known) {
+      throw new Error("The wallet session was lost — scan the QR again to reconnect.");
+    }
+
     try {
-      const { signedXDR } = await client.request<{ signedXDR: string }>({
-        topic: this.session.topic,
-        chainId: this.chainId,
-        request: { method: SIGN_METHOD, params: { xdr } },
-      });
-      return signedXDR;
+      const result = await withTimeout(
+        client.request<{ signedXDR: string } | string>({
+          topic,
+          chainId: this.chainId,
+          request: { method: SIGN_METHOD, params: { xdr } },
+        }),
+        SIGN_TIMEOUT_MS,
+        `The wallet did not respond within ${SIGN_TIMEOUT_MS / 1000}s. Open Freighter mobile to approve the request, then try again.`,
+      );
+      // Freighter returns { signedXDR }; be defensive about a bare-string or
+      // alternately-named response so a shape mismatch fails loudly, not silently.
+      const signed =
+        typeof result === "string"
+          ? result
+          : result?.signedXDR ??
+            (result as { signedTxXdr?: string })?.signedTxXdr;
+      if (!signed) {
+        log("sign_response ✗ empty", { result });
+        throw new Error("The wallet returned an empty signature (unexpected response shape).");
+      }
+      log("sign_response ✓", { signedChars: signed.length });
+      return signed;
     } catch (e) {
+      log("sign_request ✗", { message: (e as { message?: string })?.message });
       throw toError(e);
     }
   }

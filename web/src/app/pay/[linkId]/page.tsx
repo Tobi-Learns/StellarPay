@@ -107,7 +107,7 @@ export default function CheckoutPage({
     if (!mobileAddress || mobileStartedRef.current || !link) return;
     if (!payerName.trim() || !payerEmail.trim()) return;
     mobileStartedRef.current = true;
-    void settle(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr));
+    void settle(mobileAddress, (xdr) => connectorRef.current!.signXdr(xdr), "mobile");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mobileAddress, payerName, payerEmail, link]);
 
@@ -134,7 +134,11 @@ export default function CheckoutPage({
   const amountDisplay = formatUsdc(BigInt(link.amount));
 
   // Browser and mobile run the same settlement path; only the signer differs.
-  async function settle(payerAddr: string, sign: (xdr: string) => Promise<string>) {
+  async function settle(
+    payerAddr: string,
+    sign: (xdr: string) => Promise<string>,
+    signingMethod: "mobile" | "web",
+  ) {
     if (!link) return;
 
     setStatus("signing");
@@ -168,6 +172,7 @@ export default function CheckoutPage({
             payerName: payerName.trim(),
             payerEmail: payerEmail.trim(),
             payerWallet: payerAddr,
+            signingMethod,
           },
         },
       });
@@ -196,7 +201,7 @@ export default function CheckoutPage({
       setErrorMsg("Please enter your name and email before paying.");
       return;
     }
-    await settle(address, signTransaction);
+    await settle(address, signTransaction, "web");
   }
 
   const busy = status === "signing" || status === "submitting";

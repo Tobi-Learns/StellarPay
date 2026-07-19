@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   amountForDashboardEvent,
+  bucketDashboardEvents,
   compareDashboardPeriods,
   dashboardWindow,
+  parseDashboardRange,
   rankTopProducts,
   splitDashboardPeriods,
+  summarizeSubscriptionHealth,
   summarizePeriod,
   toRecentSale,
   type DashboardEventInput,
@@ -51,11 +54,19 @@ function recurring(createdAt: string, periods = 1, product = "Membership", payer
   });
 }
 
-test("dashboard window is two adjacent seven-day rolling periods", () => {
+test("dashboard window defaults to two adjacent thirty-day rolling periods", () => {
   const window = dashboardWindow(NOW);
-  assert.equal(window.currentStart.toISOString(), "2026-07-12T12:00:00.000Z");
-  assert.equal(window.previousStart.toISOString(), "2026-07-05T12:00:00.000Z");
+  assert.equal(window.currentStart.toISOString(), "2026-06-19T12:00:00.000Z");
+  assert.equal(window.previousStart.toISOString(), "2026-05-20T12:00:00.000Z");
   assert.equal(window.currentEnd.toISOString(), NOW.toISOString());
+});
+
+test("dashboard range accepts only 7, 30, or 90 days and otherwise defaults to 30", () => {
+  assert.equal(parseDashboardRange("7"), 7);
+  assert.equal(parseDashboardRange("30"), 30);
+  assert.equal(parseDashboardRange("90"), 90);
+  assert.equal(parseDashboardRange("14"), 30);
+  assert.equal(parseDashboardRange(null), 30);
 });
 
 test("period comparisons handle empty, new, lost, flat, and growing activity", () => {
@@ -67,22 +78,22 @@ test("period comparisons handle empty, new, lost, flat, and growing activity", (
     text: "New activity this period",
     tone: "positive",
   });
-  assert.deepEqual(compareDashboardPeriods("0", "10"), {
+  assert.deepEqual(compareDashboardPeriods("0", "10", 7), {
     text: "-100.0% vs previous 7 days",
     tone: "negative",
   });
-  assert.deepEqual(compareDashboardPeriods("10", "10"), {
+  assert.deepEqual(compareDashboardPeriods("10", "10", 7), {
     text: "Flat vs previous 7 days",
     tone: "muted",
   });
-  assert.deepEqual(compareDashboardPeriods("15", "10"), {
+  assert.deepEqual(compareDashboardPeriods("15", "10", 7), {
     text: "+50.0% vs previous 7 days",
     tone: "positive",
   });
 });
 
 test("period boundaries are start-inclusive and end-exclusive", () => {
-  const { currentStart, currentEnd, previousStart } = dashboardWindow(NOW);
+  const { currentStart, currentEnd, previousStart } = dashboardWindow(NOW, 7);
   const beforeAll = payment(new Date(previousStart.getTime() - 1).toISOString(), "10000000");
   const atPreviousStart = payment(previousStart.toISOString(), "20000000");
   const atCurrentStart = payment(currentStart.toISOString(), "30000000");
@@ -91,9 +102,46 @@ test("period boundaries are start-inclusive and end-exclusive", () => {
   const split = splitDashboardPeriods(
     [beforeAll, atPreviousStart, atCurrentStart, beforeCurrentEnd, atCurrentEnd],
     NOW,
+    7,
   );
   assert.deepEqual(split.previousEvents.map((row) => row.txHash), [atPreviousStart.txHash]);
   assert.deepEqual(split.currentEvents.map((row) => row.txHash), [atCurrentStart.txHash, beforeCurrentEnd.txHash]);
+});
+
+test("daily buckets are zero-filled, UTC-stable, and keep boundary events in one bucket", () => {
+  const start = new Date("2026-07-16T12:00:00.000Z");
+  const rows = bucketDashboardEvents([
+    payment("2026-07-16T12:00:00.000Z", "10000000"),
+    recurring("2026-07-18T11:59:59.999Z", 2),
+    payment("2026-07-18T12:00:00.000Z", "90000000"),
+  ], start, NOW, 7);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map((row) => row.label), ["Jul 16", "Jul 17", "Jul 18"]);
+  assert.equal(rows[0].volumeReceived, "10000000");
+  assert.equal(rows[1].volumeReceived, "40000000");
+  assert.equal(rows[2].volumeReceived, "90000000");
+  assert.equal(rows[2].successfulPayments, 1);
+});
+
+test("range outputs use daily buckets for 7/30 days and weekly buckets for 90 days", () => {
+  for (const range of [7, 30, 90] as const) {
+    const window = dashboardWindow(NOW, range);
+    const buckets = bucketDashboardEvents([], window.currentStart, window.currentEnd, range);
+    assert.equal(buckets.length, range === 90 ? 13 : range);
+    assert.ok(buckets.every((bucket) => bucket.volumeReceived === "0"));
+    assert.equal(buckets[0].start, window.currentStart.toISOString());
+    assert.equal(buckets.at(-1)?.end, window.currentEnd.toISOString());
+  }
+});
+
+test("subscription health states are mutually exclusive and ordered by urgency", () => {
+  assert.deepEqual(summarizeSubscriptionHealth([
+    { status: "Active", retryCount: 0, nextRetryAt: null, needsReauthorization: false },
+    { status: "Active", retryCount: 1, nextRetryAt: null, needsReauthorization: true },
+    { status: "PastDue", retryCount: 2, nextRetryAt: NOW, needsReauthorization: true },
+    { status: "Active", retryCount: 0, nextRetryAt: null, needsReauthorization: true },
+    { status: "Canceled", retryCount: 0, nextRetryAt: null, needsReauthorization: false },
+  ]), { active: 1, retrying: 1, pastDue: 1, needsApproval: 1 });
 });
 
 test("summary splits one-time and recurring actual collections", () => {

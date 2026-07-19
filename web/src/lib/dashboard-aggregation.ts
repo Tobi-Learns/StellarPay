@@ -1,5 +1,32 @@
 const DAY_MS = 86_400_000;
 
+export const DASHBOARD_RANGES = [7, 30, 90] as const;
+export type DashboardRange = (typeof DASHBOARD_RANGES)[number];
+
+export interface DashboardBucket {
+  start: string;
+  end: string;
+  label: string;
+  volumeReceived: string;
+  oneTimeVolume: string;
+  recurringVolume: string;
+  successfulPayments: number;
+}
+
+export interface SubscriptionHealth {
+  active: number;
+  retrying: number;
+  pastDue: number;
+  needsApproval: number;
+}
+
+export interface SubscriptionHealthInput {
+  status: string;
+  retryCount: number;
+  nextRetryAt: Date | null;
+  needsReauthorization: boolean;
+}
+
 export const DASHBOARD_ACTIVITY_TYPES = [
   "payment.settled",
   "subscription.created",
@@ -108,16 +135,22 @@ export function amountForDashboardEvent(event: DashboardEventInput): bigint | nu
     : null;
 }
 
-export function dashboardWindow(now: Date) {
+export function parseDashboardRange(value: string | null | undefined): DashboardRange {
+  const range = Number(value);
+  return DASHBOARD_RANGES.includes(range as DashboardRange) ? (range as DashboardRange) : 30;
+}
+
+export function dashboardWindow(now: Date, range: DashboardRange = 30) {
   const currentEnd = new Date(now);
-  const currentStart = new Date(now.getTime() - 7 * DAY_MS);
-  const previousStart = new Date(now.getTime() - 14 * DAY_MS);
+  const currentStart = new Date(now.getTime() - range * DAY_MS);
+  const previousStart = new Date(now.getTime() - range * 2 * DAY_MS);
   return { currentStart, currentEnd, previousStart };
 }
 
 export function compareDashboardPeriods(
   currentValue: string | number,
   previousValue: string | number,
+  range: DashboardRange = 30,
 ): DashboardComparison {
   const current = BigInt(currentValue);
   const previous = BigInt(previousValue);
@@ -128,15 +161,19 @@ export function compareDashboardPeriods(
     return { text: "New activity this period", tone: "positive" };
   }
   const tenths = Number(((current - previous) * BigInt(1000)) / previous) / 10;
-  if (tenths === 0) return { text: "Flat vs previous 7 days", tone: "muted" };
+  if (tenths === 0) return { text: `Flat vs previous ${range} days`, tone: "muted" };
   return {
-    text: `${tenths > 0 ? "+" : ""}${tenths.toFixed(1)}% vs previous 7 days`,
+    text: `${tenths > 0 ? "+" : ""}${tenths.toFixed(1)}% vs previous ${range} days`,
     tone: tenths > 0 ? "positive" : "negative",
   };
 }
 
-export function splitDashboardPeriods(events: DashboardEventInput[], now: Date) {
-  const window = dashboardWindow(now);
+export function splitDashboardPeriods(
+  events: DashboardEventInput[],
+  now: Date,
+  range: DashboardRange = 30,
+) {
+  const window = dashboardWindow(now, range);
   return {
     ...window,
     currentEvents: events.filter(
@@ -146,6 +183,58 @@ export function splitDashboardPeriods(events: DashboardEventInput[], now: Date) 
       (event) => event.createdAt >= window.previousStart && event.createdAt < window.currentStart,
     ),
   };
+}
+
+function bucketLabel(start: Date, end: Date, weekly: boolean): string {
+  const day = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  if (!weekly) return day.format(start);
+  return `${day.format(start)}–${day.format(new Date(end.getTime() - 1))}`;
+}
+
+export function bucketDashboardEvents(
+  events: DashboardEventInput[],
+  start: Date,
+  end: Date,
+  range: DashboardRange,
+): DashboardBucket[] {
+  const bucketMs = range === 90 ? 7 * DAY_MS : DAY_MS;
+  const buckets: DashboardBucket[] = [];
+
+  for (let cursor = start.getTime(); cursor < end.getTime(); cursor += bucketMs) {
+    const bucketStart = new Date(cursor);
+    const bucketEnd = new Date(Math.min(cursor + bucketMs, end.getTime()));
+    const metrics = summarizePeriod(
+      events.filter((event) => event.createdAt >= bucketStart && event.createdAt < bucketEnd),
+    );
+    buckets.push({
+      start: bucketStart.toISOString(),
+      end: bucketEnd.toISOString(),
+      label: bucketLabel(bucketStart, bucketEnd, range === 90),
+      volumeReceived: metrics.volumeReceived,
+      oneTimeVolume: metrics.oneTimeVolume,
+      recurringVolume: metrics.recurringVolume,
+      successfulPayments: metrics.successfulPayments,
+    });
+  }
+
+  return buckets;
+}
+
+export function summarizeSubscriptionHealth(
+  subscriptions: SubscriptionHealthInput[],
+): SubscriptionHealth {
+  const health: SubscriptionHealth = { active: 0, retrying: 0, pastDue: 0, needsApproval: 0 };
+  for (const subscription of subscriptions) {
+    if (subscription.status === "PastDue") health.pastDue += 1;
+    else if (subscription.retryCount > 0 || subscription.nextRetryAt) health.retrying += 1;
+    else if (subscription.needsReauthorization) health.needsApproval += 1;
+    else if (subscription.status === "Active") health.active += 1;
+  }
+  return health;
 }
 
 export function summarizePeriod(events: DashboardEventInput[]): PeriodMetrics {

@@ -3,10 +3,13 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import {
   DASHBOARD_ACTIVITY_TYPES,
+  bucketDashboardEvents,
   dashboardWindow,
+  parseDashboardRange,
   rankTopProducts,
   splitDashboardPeriods,
   summarizePeriod,
+  summarizeSubscriptionHealth,
   toRecentSale,
   type DashboardEventInput,
 } from "@/lib/dashboard-aggregation";
@@ -42,7 +45,8 @@ export async function GET(req: NextRequest) {
   if (!merchant) return NextResponse.json({ error: "merchant required" }, { status: 400 });
 
   const now = new Date();
-  const { currentStart, currentEnd, previousStart } = dashboardWindow(now);
+  const range = parseDashboardRange(req.nextUrl.searchParams.get("range"));
+  const { currentStart, currentEnd, previousStart } = dashboardWindow(now, range);
   const merchantEventFilter: Prisma.EventWhereInput = {
     OR: [
       { data: { path: ["merchant"], equals: merchant } },
@@ -112,7 +116,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const periodEvents = asDashboardEvents(periodEventsRaw);
-  const { currentEvents, previousEvents } = splitDashboardPeriods(periodEvents, now);
+  const { currentEvents, previousEvents } = splitDashboardPeriods(periodEvents, now, range);
 
   const needsAttention = subs
     .filter(
@@ -145,7 +149,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     period: {
-      label: "Last 7 days",
+      range,
+      label: `Last ${range} days`,
       current: { start: currentStart, end: currentEnd },
       previous: { start: previousStart, end: currentStart },
     },
@@ -154,6 +159,8 @@ export async function GET(req: NextRequest) {
       previous: summarizePeriod(previousEvents),
       activeSubscriptions: subs.filter((sub) => sub.status === "Active").length,
     },
+    buckets: bucketDashboardEvents(currentEvents, currentStart, currentEnd, range),
+    subscriptionHealth: summarizeSubscriptionHealth(subs),
     needsAttention,
     recentSales: asDashboardEvents(recentEventsRaw).map(toRecentSale),
     topProducts: rankTopProducts(currentEvents),

@@ -2,8 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  CollectionsChart,
+  PaymentsChart,
+  SubscriptionHealthChart,
+  TopProductsChart,
+  type ChartBucket,
+  type ChartHealth,
+} from "@/components/dashboard-charts";
 import { Skeleton } from "@/components/skeleton";
-import { compareDashboardPeriods } from "@/lib/dashboard-aggregation";
+import { compareDashboardPeriods, type DashboardRange } from "@/lib/dashboard-aggregation";
 import { formatUsdc, truncateAddress } from "@/lib/stellar";
 import { useWallet } from "@/lib/wallet-context";
 
@@ -64,10 +72,13 @@ interface SetupResource {
 
 interface Dashboard {
   period: {
+    range: DashboardRange;
     label: string;
     current: { start: string; end: string };
     previous: { start: string; end: string };
   };
+  buckets: ChartBucket[];
+  subscriptionHealth: ChartHealth;
   performance: {
     current: PeriodMetrics;
     previous: PeriodMetrics;
@@ -135,8 +146,8 @@ function MetricCard({
   );
 }
 
-async function fetchDashboard(address: string): Promise<Dashboard> {
-  const response = await fetch(`/api/dashboard?merchant=${encodeURIComponent(address)}`);
+async function fetchDashboard(address: string, range: DashboardRange): Promise<Dashboard> {
+  const response = await fetch(`/api/dashboard?merchant=${encodeURIComponent(address)}&range=${range}`);
   if (!response.ok) throw new Error("Dashboard data could not be loaded.");
   const next = (await response.json()) as Dashboard;
   if (!next?.performance || !next?.period) throw new Error("Dashboard data is incomplete.");
@@ -149,13 +160,14 @@ export default function PlatformOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [range, setRange] = useState<DashboardRange>(30);
 
   const load = useCallback(async () => {
     if (!address) return;
     setLoading(true);
     setError(null);
     try {
-      const next = await fetchDashboard(address);
+      const next = await fetchDashboard(address, range);
       setData(next);
     } catch (cause) {
       setData(null);
@@ -163,12 +175,12 @@ export default function PlatformOverviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [address]);
+  }, [address, range]);
 
   useEffect(() => {
     if (!address) return;
     let active = true;
-    fetchDashboard(address)
+    fetchDashboard(address, range)
       .then((next) => {
         if (active) setData(next);
       })
@@ -183,7 +195,7 @@ export default function PlatformOverviewPage() {
     return () => {
       active = false;
     };
-  }, [address]);
+  }, [address, range]);
 
   async function copyCheckout(path: string, key: string) {
     await navigator.clipboard.writeText(`${window.location.origin}${path}`);
@@ -200,14 +212,17 @@ export default function PlatformOverviewPage() {
   const volumeComparison = compareDashboardPeriods(
     data.performance.current.volumeReceived,
     data.performance.previous.volumeReceived,
+    data.period.range,
   );
   const paymentComparison = compareDashboardPeriods(
     data.performance.current.successfulPayments,
     data.performance.previous.successfulPayments,
+    data.period.range,
   );
   const recurringComparison = compareDashboardPeriods(
     data.performance.current.recurringVolume,
     data.performance.previous.recurringVolume,
+    data.period.range,
   );
 
   return (
@@ -229,11 +244,11 @@ export default function PlatformOverviewPage() {
         <div className="mb-3 flex items-end justify-between gap-4">
           <div>
             <h2 id="performance-heading" className="text-lg font-semibold text-[var(--sp-ink)]">Performance pulse</h2>
-            <p className="mt-0.5 text-sm text-[var(--sp-muted)]">Last 7 days compared with the previous 7 days</p>
+            <p className="mt-0.5 text-sm text-[var(--sp-muted)]">Last {data.period.range} days compared with the previous {data.period.range} days</p>
           </div>
-          <span className="hidden rounded-full bg-[var(--sp-mist)] px-3 py-1 text-xs font-semibold text-[var(--sp-muted)] sm:inline">
-            Actual collections
-          </span>
+          <div className="flex rounded-full border border-[var(--sp-border)] bg-white p-1" aria-label="Dashboard date range">
+            {([7, 30, 90] as const).map((days) => <button key={days} type="button" onClick={() => { if (days === range) return; setLoading(true); setError(null); setRange(days); }} aria-pressed={range === days} className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sp-green)] ${range === days ? "bg-[var(--sp-ink)] text-white" : "text-[var(--sp-muted)] hover:bg-[var(--sp-mist)]"}`}>{days}d</button>)}
+          </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
@@ -262,11 +277,19 @@ export default function PlatformOverviewPage() {
         </div>
       </section>
 
-      <ActionQueue rows={data.needsAttention} />
+      <div className="mt-8 grid gap-6 xl:grid-cols-3">
+        <CollectionsChart buckets={data.buckets} />
+        <PaymentsChart buckets={data.buckets} />
+      </div>
+
+      <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.7fr)] xl:items-start">
+        <SubscriptionHealthChart health={data.subscriptionHealth} />
+        <ActionQueue rows={data.needsAttention} flush />
+      </div>
 
       <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,0.8fr)]">
         <RecentSales rows={data.recentSales} />
-        <TopProducts rows={data.topProducts} />
+        <TopProductsChart products={data.topProducts} range={data.period.range} />
       </div>
 
       <ContextualActions setup={data.setup} copied={copied} copyCheckout={copyCheckout} />
@@ -274,9 +297,9 @@ export default function PlatformOverviewPage() {
   );
 }
 
-function ActionQueue({ rows }: { rows: AttentionRow[] }) {
+function ActionQueue({ rows, flush = false }: { rows: AttentionRow[]; flush?: boolean }) {
   return (
-    <section className="mt-8" aria-labelledby="attention-heading">
+    <section className={flush ? "" : "mt-8"} aria-labelledby="attention-heading">
       <div className="mb-3">
         <h2 id="attention-heading" className="text-lg font-semibold text-[var(--sp-ink)]">Action queue</h2>
         <p className="mt-0.5 text-sm text-[var(--sp-muted)]">Subscription issues that may need follow-up</p>
@@ -387,38 +410,6 @@ function RecentSales({ rows }: { rows: RecentSale[] }) {
               return <li key={row.extId}>{row.href ? <Link href={row.href} className="block transition-colors hover:bg-[var(--sp-mist)]">{content}</Link> : content}</li>;
             })}
           </ul>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function TopProducts({ rows }: { rows: TopProduct[] }) {
-  return (
-    <section aria-labelledby="products-heading">
-      <div className="mb-3">
-        <h2 id="products-heading" className="text-lg font-semibold text-[var(--sp-ink)]">Top products</h2>
-        <p className="mt-0.5 text-sm text-[var(--sp-muted)]">Ranked by actual volume in the last 7 days</p>
-      </div>
-      <div className="overflow-hidden rounded-2xl border border-[var(--sp-border)] bg-white shadow-[0_16px_42px_rgba(15,19,25,0.045)]">
-        {rows.length === 0 ? (
-          <p className="px-5 py-12 text-center text-sm text-[var(--sp-muted)]">No product sales in this period.</p>
-        ) : (
-          <ol className="divide-y divide-[var(--sp-border)]">
-            {rows.map((row, index) => {
-              const content = (
-                <div className="flex items-center gap-3 px-4 py-4">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--sp-mist)] text-xs font-bold text-[var(--sp-muted)]">{index + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[var(--sp-ink)]">{row.productName}</p>
-                    <p className="mt-0.5 text-xs text-[var(--sp-muted)]">{row.payments} payment{row.payments === 1 ? "" : "s"} · {row.customers} customer{row.customers === 1 ? "" : "s"}</p>
-                  </div>
-                  <span className="text-right text-sm font-semibold text-[var(--sp-ink)]">{usdc(row.volumeReceived)}</span>
-                </div>
-              );
-              return <li key={row.key}>{row.href ? <Link href={row.href} className="block transition-colors hover:bg-[var(--sp-mist)]">{content}</Link> : content}</li>;
-            })}
-          </ol>
         )}
       </div>
     </section>

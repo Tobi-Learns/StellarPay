@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useWallet } from "@/lib/wallet-context";
-import { loadLinks, type PaymentLink } from "@/lib/payment-links";
+import { type PaymentLink } from "@/lib/payment-links";
 import { formatUsdc, truncateAddress } from "@/lib/stellar";
 import { SkeletonRow } from "@/components/skeleton";
 
@@ -46,7 +45,6 @@ function linkUrl(numericId: string) {
 }
 
 export default function PaymentsPage() {
-  const { address } = useWallet();
   const [links, setLinks] = useState<PaymentLinkRow[]>([]);
   const [settled, setSettled] = useState<SettledPayment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +53,9 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (!address) return;
-
-    const enc = encodeURIComponent(address);
-
     Promise.all([
-      fetch(`/api/payments?merchant=${enc}`).then((r) => r.json()).catch(() => []),
-      fetch(`/api/events?merchant=${enc}&type=payment.settled`).then((r) => r.json()).catch(() => []),
+      fetch("/api/payments").then((r) => r.json()).catch(() => []),
+      fetch("/api/events?type=payment.settled").then((r) => r.json()).catch(() => []),
     ]).then(([rows, events]) => {
       if (Array.isArray(rows) && rows.length > 0) {
         setLinks(rows.map((r: {
@@ -89,12 +83,10 @@ export default function PaymentsPage() {
           settledCount: r.settledCount ?? 0,
           totalVolume: r.totalVolume ?? "0",
         })));
-      } else {
-        setLinks(loadLinks().filter((l) => l.merchant === address));
-      }
+      } else setLinks([]);
       if (Array.isArray(events)) setSettled(events);
     }).finally(() => setLoading(false));
-  }, [address]);
+  }, []);
 
   const settledRows = useMemo(() => settled.map((event) => {
     const link = event.paymentLink;

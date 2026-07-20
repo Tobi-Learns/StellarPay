@@ -10,12 +10,15 @@ import { db } from "./db";
  * HMAC is computed over "<timestamp>.<raw_json_body>".
  */
 export async function deliverWebhook(
-  merchant: string,
+  businessOrMerchant: string,
   type: string,
   data: unknown
 ): Promise<void> {
   const endpoints = await db.webhookEndpoint.findMany({
-    where: { merchant, active: true },
+    where: {
+      active: true,
+      OR: [{ businessId: businessOrMerchant }, { merchant: businessOrMerchant }],
+    },
   });
 
   if (endpoints.length === 0) return;

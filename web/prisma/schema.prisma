@@ -6,98 +6,270 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id               String            @id @default(cuid())
+  name             String?
+  email            String?           @unique
+  emailVerified    DateTime?
+  image            String?
+  accounts         Account[]
+  sessions         Session[]
+  memberships      Membership[]
+  walletChallenges WalletChallenge[]
+  walletAudits     WalletAudit[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Business {
+  id                 String             @id @default(cuid())
+  name               String
+  logoUrl            String?
+  verified           Boolean            @default(false)
+  claimedAt          DateTime?
+  importedFromWallet String?            @unique
+  memberships        Membership[]
+  wallets            SettlementWallet[]
+  walletChallenges   WalletChallenge[]
+  walletAudits       WalletAudit[]
+  merchantProfile    Merchant?
+  paymentLinks       PaymentLink[]
+  plans              Plan[]
+  subscriptions      Subscription[]
+  webhookEndpoints   WebhookEndpoint[]
+  apiKeys            ApiKey[]
+  events             Event[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  businessId String
+  role       String   @default("owner")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+}
+
+model SettlementWallet {
+  id            String         @id @default(cuid())
+  businessId    String
+  address       String         @unique
+  status        String         @default("current") // current | legacy
+  isDefault     Boolean        @default(false)
+  verifiedAt    DateTime
+  legacyAt      DateTime?
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  paymentLinks  PaymentLink[]
+  plans         Plan[]
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([businessId, isDefault])
+}
+
+model WalletChallenge {
+  id         String    @id @default(cuid())
+  userId     String
+  businessId String?
+  address    String
+  purpose    String
+  nonce      String    @unique
+  xdr        String    @db.Text
+  network    String
+  homeDomain String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([businessId])
+}
+
+model WalletAudit {
+  id              String   @id @default(cuid())
+  businessId      String
+  actorUserId     String
+  action          String
+  address         String
+  previousAddress String?
+  metadata        Json?
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  actor           User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now())
+
+  @@index([businessId, createdAt])
+}
+
 model Merchant {
-  address     String   @id          // Stellar address
+  address     String    @id // Stellar address
+  businessId  String?   @unique
+  business    Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
   displayName String?
   email       String?
   logoUrl     String?
-  verified    Boolean  @default(false)  // stub — no real KYC for MVP
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  verified    Boolean   @default(false) // stub — no real KYC for MVP
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model PaymentLink {
-  id          String   @id @default(cuid())
-  extId       String   @unique  // plink_ + ULID — external API/dashboard handle (3.2)
-  numericId   String   @unique  // Snowflake u64 — the canonical link id (URL param + contract link_id)
-  merchant    String            // Stellar address
-  amount      String            // stroops as string
-  productName String   @default("Untitled product or service")
-  description String?
-  archivedAt  DateTime?
-  createdAt   DateTime @default(now())
-  events      Event[]
+  id                 String            @id @default(cuid())
+  extId              String            @unique // plink_ + ULID — external API/dashboard handle (3.2)
+  numericId          String            @unique // Snowflake u64 — the canonical link id (URL param + contract link_id)
+  merchant           String // Stellar address
+  businessId         String?
+  settlementWalletId String?
+  business           Business?         @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  settlementWallet   SettlementWallet? @relation(fields: [settlementWalletId], references: [id], onDelete: SetNull)
+  amount             String // stroops as string
+  productName        String            @default("Untitled product or service")
+  description        String?
+  archivedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  events             Event[]
+
+  @@index([businessId])
 }
 
 model Plan {
-  id            String         @id @default(cuid())
-  extId         String         @unique  // plan_ + ULID — external API/dashboard handle (3.2)
-  onChainId     String         @unique  // u64 as string returned from create_plan
-  merchant      String
-  amount        String
-  productName   String         @default("Untitled product or service")
-  description   String?
-  interval      Int                     // min_interval_secs — the on-chain cadence floor
-  intervalLabel String
-  intervalUnit  String         @default("month")  // minute | day | week | month | year
-  intervalCount Int            @default(1)
-  archivedAt    DateTime?
-  createdAt     DateTime       @default(now())
-  subscriptions Subscription[]
+  id                 String            @id @default(cuid())
+  extId              String            @unique // plan_ + ULID — external API/dashboard handle (3.2)
+  onChainId          String            @unique // u64 as string returned from create_plan
+  merchant           String
+  businessId         String?
+  settlementWalletId String?
+  business           Business?         @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  settlementWallet   SettlementWallet? @relation(fields: [settlementWalletId], references: [id], onDelete: SetNull)
+  amount             String
+  productName        String            @default("Untitled product or service")
+  description        String?
+  interval           Int // min_interval_secs — the on-chain cadence floor
+  intervalLabel      String
+  intervalUnit       String            @default("month") // minute | day | week | month | year
+  intervalCount      Int               @default(1)
+  archivedAt         DateTime?
+  createdAt          DateTime          @default(now())
+  subscriptions      Subscription[]
+
+  @@index([businessId])
 }
 
 model Subscription {
-  id            String   @id @default(cuid())
-  extId         String   @unique  // sub_ + ULID — external API/dashboard handle (3.2)
-  onChainId     String   @unique  // u64 as string returned from subscribe
-  planOnChainId String
-  plan          Plan     @relation(fields: [planOnChainId], references: [onChainId])
-  subscriber    String
-  merchant      String
-  amount        String
-  payerName     String?
-  payerEmail    String?
-  status        String   @default("Active")  // Active | PastDue | Canceled
-  retryCount    Int      @default(0)         // consecutive insufficient-BALANCE observations (2j retry policy); never incremented by allowance shortfalls (2.4a)
-  nextRetryAt   DateTime?                    // when the retry cron should re-attempt this charge
-  needsReauthorization Boolean @default(false)  // 2.4b: allowance exhausted/expired but balance OK — contract lost permission; funded, so NOT canceled. Self-clears on next successful charge
-  reauthRequestedAt    DateTime?              // when the sub first entered needs-reauthorization (for dunning grace timing, 2.4f)
-  anchorAt      DateTime @default(now())     // subscribe date; billing boundaries are computed from this (2.1)
-  periodsCharged Int     @default(1)         // charges made so far; next_charge_at = billingDateAfter(anchorAt, interval, periodsCharged)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  events        Event[]
+  id                   String            @id @default(cuid())
+  extId                String            @unique // sub_ + ULID — external API/dashboard handle (3.2)
+  onChainId            String            @unique // u64 as string returned from subscribe
+  planOnChainId        String
+  plan                 Plan              @relation(fields: [planOnChainId], references: [onChainId])
+  subscriber           String
+  merchant             String
+  businessId           String?
+  settlementWalletId   String?
+  business             Business?         @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  settlementWallet     SettlementWallet? @relation(fields: [settlementWalletId], references: [id], onDelete: SetNull)
+  amount               String
+  payerName            String?
+  payerEmail           String?
+  status               String            @default("Active") // Active | PastDue | Canceled
+  retryCount           Int               @default(0) // consecutive insufficient-BALANCE observations (2j retry policy); never incremented by allowance shortfalls (2.4a)
+  nextRetryAt          DateTime? // when the retry cron should re-attempt this charge
+  needsReauthorization Boolean           @default(false) // 2.4b: allowance exhausted/expired but balance OK — contract lost permission; funded, so NOT canceled. Self-clears on next successful charge
+  reauthRequestedAt    DateTime? // when the sub first entered needs-reauthorization (for dunning grace timing, 2.4f)
+  anchorAt             DateTime          @default(now()) // subscribe date; billing boundaries are computed from this (2.1)
+  periodsCharged       Int               @default(1) // charges made so far; next_charge_at = billingDateAfter(anchorAt, interval, periodsCharged)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  events               Event[]
+
+  @@index([businessId])
 }
 
 model WebhookEndpoint {
-  id        String   @id @default(cuid())
-  merchant  String
-  url       String
-  secret    String   // whsec_ + 32 hex — HMAC-SHA256 signing secret, shown once on creation
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id         String    @id @default(cuid())
+  merchant   String
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  url        String
+  secret     String // whsec_ + 32 hex — HMAC-SHA256 signing secret, shown once on creation
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId])
 }
 
 model ApiKey {
   id         String    @id @default(cuid())
   merchant   String
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
   name       String?
-  keyHash    String    @unique  // SHA-256 of the raw key — never stored in plaintext
-  prefix     String             // "sp_" + first 8 chars, shown in the UI
+  keyHash    String    @unique // SHA-256 of the raw key — never stored in plaintext
+  prefix     String // "sp_" + first 8 chars, shown in the UI
   createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
   revokedAt  DateTime?
+
+  @@index([businessId])
 }
 
 model Event {
-  id             String       @id @default(cuid())
-  extId          String       @unique  // evt_ + ULID — external/webhook event id (3.2)
-  type           String       // payment.settled | subscription.created | subscription.charged | subscription.canceled
-  txHash         String       @unique
+  id             String        @id @default(cuid())
+  extId          String        @unique // evt_ + ULID — external/webhook event id (3.2)
+  type           String // payment.settled | subscription.created | subscription.charged | subscription.canceled
+  txHash         String        @unique
   paymentLinkId  String?
   subscriptionId String?
-  paymentLink    PaymentLink? @relation(fields: [paymentLinkId], references: [id])
+  businessId     String?
+  paymentLink    PaymentLink?  @relation(fields: [paymentLinkId], references: [id])
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  business       Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
   data           Json
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime      @default(now())
+
+  @@index([businessId, createdAt])
 }

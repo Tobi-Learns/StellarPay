@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPlatformContext } from "@/lib/auth-session";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ planId: string }> }
 ) {
   const { planId } = await params;
+  const manage = req.nextUrl.searchParams.get("manage") === "1";
+  const context = manage ? await getPlatformContext() : null;
+  if (manage && !context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const plan = await db.plan.findUnique({
     where: { onChainId: planId },
     include: {
-      subscriptions: {
+      subscriptions: manage ? {
         orderBy: { createdAt: "desc" },
         take: 100,
         select: {
@@ -22,10 +26,13 @@ export async function GET(
           status: true,
           createdAt: true,
         },
-      },
+      } : false,
     },
   });
   if (!plan) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (manage && plan.businessId !== context?.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   return NextResponse.json(plan);
 }
 
@@ -34,6 +41,12 @@ export async function PATCH(
   { params }: { params: Promise<{ planId: string }> }
 ) {
   const { planId } = await params;
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const existing = await db.plan.findUnique({ where: { onChainId: planId } });
+  if (!existing || existing.businessId !== context.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await req.json();
   const { archived, productName, description } = body as {
     archived?: boolean;

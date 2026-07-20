@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPlatformContext } from "@/lib/auth-session";
 
 // Single settled-payment detail: one Event joined with its payment link, for the
 // Payments received manage view (4m). Keyed by txHash — the natural, unique id
@@ -8,6 +9,8 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ txHash: string }> }
 ) {
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { txHash } = await params;
 
   const event = await db.event.findUnique({
@@ -27,6 +30,9 @@ export async function GET(
   });
 
   if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (event.businessId !== context.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   return NextResponse.json(event);
 }

@@ -3,11 +3,13 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { deliverWebhook } from "@/lib/webhooks";
 import { newId } from "@/lib/ids";
+import { getPlatformContext } from "@/lib/auth-session";
 
 export async function GET(req: NextRequest) {
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const subscriptionId = req.nextUrl.searchParams.get("subscriptionId");
   const paymentLinkId = req.nextUrl.searchParams.get("paymentLinkId");
-  const merchant = req.nextUrl.searchParams.get("merchant");
   const type = req.nextUrl.searchParams.get("type");
   const filters: Prisma.EventWhereInput[] = [];
 
@@ -30,15 +32,7 @@ export async function GET(req: NextRequest) {
     });
   }
   if (type) filters.push({ type });
-  if (merchant) {
-    filters.push({
-      OR: [
-        { data: { path: ["merchant"], equals: merchant } },
-        { paymentLink: { merchant } },
-        { subscription: { merchant } },
-      ],
-    });
-  }
+  filters.push({ businessId: context.businessId });
 
   const events = await db.event.findMany({
     where: filters.length > 0 ? { AND: filters } : undefined,
@@ -82,18 +76,31 @@ export async function POST(req: NextRequest) {
 
   const resolvedPaymentLinkId = await resolvePaymentLinkId(paymentLinkId, data);
   const resolvedSubscriptionId = await resolveSubscriptionId(subscriptionId, data);
+  const businessId = await resolveBusinessId({
+    paymentLinkId: resolvedPaymentLinkId,
+    subscriptionId: resolvedSubscriptionId,
+    data,
+  });
 
   const event = await db.event.upsert({
     where: { txHash },
     update: {},
-    create: { extId: newId("evt"), type, txHash, paymentLinkId: resolvedPaymentLinkId, subscriptionId: resolvedSubscriptionId, data: data ?? {} },
+    create: {
+      extId: newId("evt"),
+      type,
+      txHash,
+      paymentLinkId: resolvedPaymentLinkId,
+      subscriptionId: resolvedSubscriptionId,
+      businessId,
+      data: data ?? {},
+    },
   });
 
   // Fire-and-forget webhook delivery for qualifying event types.
   // The payload carries the evt_ id (3.2) so consumers can dedupe/reference it.
   if (WEBHOOK_TYPES.has(type)) {
-    resolveMerchant({ type, paymentLinkId, subscriptionId, data }).then((merchant) => {
-      if (merchant) deliverWebhook(merchant, type, { id: event.extId, txHash, ...data });
+    Promise.resolve(businessId).then((owner) => {
+      if (owner) deliverWebhook(owner, type, { id: event.extId, txHash, ...data });
     }).catch(() => {});
   }
 
@@ -140,28 +147,28 @@ async function resolveSubscriptionId(subscriptionId?: string, data?: Record<stri
   return undefined;
 }
 
-async function resolveMerchant({
-  type,
+async function resolveBusinessId({
   paymentLinkId,
   subscriptionId,
   data,
 }: {
-  type: string;
   paymentLinkId?: string;
   subscriptionId?: string;
   data?: Record<string, unknown>;
 }): Promise<string | null> {
-  // Prefer explicit merchant in event data
-  if (typeof data?.merchant === "string") return data.merchant;
-
-  if (type === "payment.settled" && paymentLinkId) {
-    const link = await db.paymentLink.findUnique({ where: { id: paymentLinkId }, select: { merchant: true } });
-    return link?.merchant ?? null;
+  if (paymentLinkId) {
+    const link = await db.paymentLink.findUnique({ where: { id: paymentLinkId }, select: { businessId: true } });
+    if (link?.businessId) return link.businessId;
   }
 
   if (subscriptionId) {
-    const sub = await db.subscription.findUnique({ where: { id: subscriptionId }, select: { merchant: true } });
-    return sub?.merchant ?? null;
+    const sub = await db.subscription.findUnique({ where: { id: subscriptionId }, select: { businessId: true } });
+    if (sub?.businessId) return sub.businessId;
+  }
+
+  if (typeof data?.merchant === "string") {
+    const wallet = await db.settlementWallet.findUnique({ where: { address: data.merchant } });
+    return wallet?.businessId ?? null;
   }
 
   return null;

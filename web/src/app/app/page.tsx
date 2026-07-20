@@ -13,7 +13,6 @@ import {
 import { Skeleton } from "@/components/skeleton";
 import { compareDashboardPeriods, type DashboardRange } from "@/lib/dashboard-aggregation";
 import { formatUsdc, truncateAddress } from "@/lib/stellar";
-import { useWallet } from "@/lib/wallet-context";
 
 interface PeriodMetrics {
   volumeReceived: string;
@@ -146,8 +145,8 @@ function MetricCard({
   );
 }
 
-async function fetchDashboard(address: string, range: DashboardRange): Promise<Dashboard> {
-  const response = await fetch(`/api/dashboard?merchant=${encodeURIComponent(address)}&range=${range}`);
+async function fetchDashboard(range: DashboardRange): Promise<Dashboard> {
+  const response = await fetch(`/api/dashboard?range=${range}`);
   if (!response.ok) throw new Error("Dashboard data could not be loaded.");
   const next = (await response.json()) as Dashboard;
   if (!next?.performance || !next?.period) throw new Error("Dashboard data is incomplete.");
@@ -155,7 +154,6 @@ async function fetchDashboard(address: string, range: DashboardRange): Promise<D
 }
 
 export default function PlatformOverviewPage() {
-  const { address } = useWallet();
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,11 +161,10 @@ export default function PlatformOverviewPage() {
   const [range, setRange] = useState<DashboardRange>(30);
 
   const load = useCallback(async () => {
-    if (!address) return;
     setLoading(true);
     setError(null);
     try {
-      const next = await fetchDashboard(address, range);
+      const next = await fetchDashboard(range);
       setData(next);
     } catch (cause) {
       setData(null);
@@ -175,12 +172,11 @@ export default function PlatformOverviewPage() {
     } finally {
       setLoading(false);
     }
-  }, [address, range]);
+  }, [range]);
 
   useEffect(() => {
-    if (!address) return;
     let active = true;
-    fetchDashboard(address, range)
+    fetchDashboard(range)
       .then((next) => {
         if (active) setData(next);
       })
@@ -195,7 +191,7 @@ export default function PlatformOverviewPage() {
     return () => {
       active = false;
     };
-  }, [address, range]);
+  }, [range]);
 
   async function copyCheckout(path: string, key: string) {
     await navigator.clipboard.writeText(`${window.location.origin}${path}`);

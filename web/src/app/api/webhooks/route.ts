@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
+import { getPlatformContext } from "@/lib/auth-session";
 
-export async function GET(req: NextRequest) {
-  const merchant = req.nextUrl.searchParams.get("merchant");
-  if (!merchant) return NextResponse.json({ error: "merchant required" }, { status: 400 });
+export async function GET() {
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const endpoints = await db.webhookEndpoint.findMany({
-    where: { merchant, active: true },
+    where: { businessId: context.businessId, active: true },
     select: { id: true, url: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
@@ -15,8 +16,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { merchant, url } = await req.json();
-  if (!merchant || !url) return NextResponse.json({ error: "merchant and url required" }, { status: 400 });
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { url } = await req.json();
+  const wallet = context.business.wallets.find((candidate) => candidate.isDefault);
+  if (!wallet || !url) return NextResponse.json({ error: "Settlement wallet and url required" }, { status: 400 });
 
   try { new URL(url); } catch {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest) {
   const secret = "whsec_" + randomBytes(16).toString("hex");
 
   const endpoint = await db.webhookEndpoint.create({
-    data: { merchant, url, secret },
+    data: { businessId: context.businessId, merchant: wallet.address, url, secret },
   });
 
   // Return the secret only on creation — not retrievable again

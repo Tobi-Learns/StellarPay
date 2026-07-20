@@ -64,7 +64,7 @@ export default function PlanManagePage({
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/plans/${encodeURIComponent(id)}`)
+    fetch(`/api/plans/${encodeURIComponent(id)}?manage=1`)
       .then((r) => r.ok ? r.json() : null)
       .then((row: PlanDetail | null) => {
         if (!active) return;

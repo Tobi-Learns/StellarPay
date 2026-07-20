@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/lib/wallet-context";
 import { Header } from "@/components/header";
+import { AuthProvider } from "@/components/auth-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -84,10 +85,12 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col bg-[var(--background)] text-[var(--foreground)]">
-        <WalletProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-        </WalletProvider>
+        <AuthProvider>
+          <WalletProvider>
+            <Header />
+            <main className="flex-1">{children}</main>
+          </WalletProvider>
+        </AuthProvider>
       </body>
     </html>
   );

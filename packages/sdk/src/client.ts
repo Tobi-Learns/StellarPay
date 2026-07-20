@@ -327,7 +327,7 @@ export class StellarPayClient {
   private async _post<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${this.cfg.apiBase}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: this._headers({ "Content-Type": "application/json" }),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
@@ -338,11 +338,16 @@ export class StellarPayClient {
   }
 
   private async _get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.cfg.apiBase}${path}`);
+    const res = await fetch(`${this.cfg.apiBase}${path}`, { headers: this._headers() });
     if (!res.ok) {
       const text = await res.text().catch(() => res.statusText);
       throw new Error(`GET ${path} failed (${res.status}): ${text}`);
     }
     return res.json();
+  }
+
+  private _headers(base: Record<string, string> = {}): Record<string, string> {
+    if (!this.cfg.apiKey) return base;
+    return { ...base, Authorization: `Bearer ${this.cfg.apiKey}` };
   }
 }

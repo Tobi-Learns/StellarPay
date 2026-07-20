@@ -80,7 +80,7 @@ export default function SubscriptionDetailPage({
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/subscriptions/${encodeURIComponent(id)}`)
+    fetch(`/api/subscriptions/${encodeURIComponent(id)}?manage=1`)
       .then((r) => r.ok ? r.json() : null)
       .then((row: SubscriptionRecord | null) => {
         if (active) setSub(row);

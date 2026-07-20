@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getPlatformContext } from "@/lib/auth-session";
 
 export async function GET(
   req: NextRequest,
@@ -9,7 +10,12 @@ export async function GET(
   // The link IS the numericId now (3.2 ids change). encodedId is retired.
   const link = await db.paymentLink.findUnique({ where: { numericId: linkId } });
   if (!link) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (link.archivedAt && req.nextUrl.searchParams.get("includeArchived") !== "1") {
+  if (req.nextUrl.searchParams.get("includeArchived") === "1") {
+    const context = await getPlatformContext();
+    if (!context || link.businessId !== context.businessId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+  } else if (link.archivedAt) {
     return NextResponse.json({ error: "Payment link archived" }, { status: 410 });
   }
   return NextResponse.json(link);
@@ -20,6 +26,12 @@ export async function PATCH(
   { params }: { params: Promise<{ linkId: string }> }
 ) {
   const { linkId } = await params;
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const existing = await db.paymentLink.findUnique({ where: { numericId: linkId } });
+  if (!existing || existing.businessId !== context.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const body = await req.json();
   const { archived, productName, description } = body as {
     archived?: boolean;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet-context";
 import { buildCreatePlanXdr, submitAndWait, parseUsdc } from "@/lib/stellar";
@@ -9,7 +9,7 @@ import { minIntervalSeconds } from "@/lib/billing-schedule";
 import { snowflakeU64 } from "@/lib/ids";
 
 export default function NewPlanPage() {
-  const { address, signTransaction } = useWallet();
+  const { address, isConnecting, connect, signTransaction } = useWallet();
   const router = useRouter();
 
   const [productName, setProductName] = useState("");
@@ -18,10 +18,25 @@ export default function NewPlanPage() {
   const [intervalIdx, setIntervalIdx] = useState(0);
   const [status, setStatus] = useState<"idle" | "signing" | "submitting" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [defaultWallet, setDefaultWallet] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/business")
+      .then((response) => response.json())
+      .then((data) => {
+        const wallet = data.business?.wallets?.find((candidate: { isDefault: boolean }) => candidate.isDefault);
+        setDefaultWallet(wallet?.address ?? null);
+      })
+      .catch(() => setDefaultWallet(null));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!address) return;
+    if (!address || address !== defaultWallet) {
+      setStatus("error");
+      setErrorMsg("Connect the Business's current settlement wallet before creating a plan.");
+      return;
+    }
     if (!productName.trim() || !amount) {
       setStatus("error");
       setErrorMsg("Add a product or service name and amount.");
@@ -90,7 +105,11 @@ export default function NewPlanPage() {
       </div>
 
       {!address ? (
-        <p className="text-sm text-neutral-400">Connect your wallet first.</p>
+        <button onClick={connect} disabled={isConnecting} className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          {isConnecting ? "Connecting…" : "Connect settlement wallet"}
+        </button>
+      ) : defaultWallet && address !== defaultWallet ? (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Connected wallet does not match the current settlement wallet. Switch accounts in Freighter and reconnect.</p>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <form onSubmit={handleSubmit} className="space-y-4">

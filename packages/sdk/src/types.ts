@@ -6,6 +6,11 @@ export interface StellarPayConfig {
   rpcUrl: string;
   networkPassphrase: string;
   /**
+   * Optional server-side Platform API key. Never expose this value in a browser
+   * bundle; hosted customer checkout calls remain public and do not need it.
+   */
+  apiKey?: string;
+  /**
    * Horizon REST API base URL. Required for trustline auto-setup.
    * Testnet: "https://horizon-testnet.stellar.org"
    */

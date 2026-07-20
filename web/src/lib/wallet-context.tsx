@@ -31,6 +31,7 @@ interface WalletState {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   signTransaction: (xdr: string) => Promise<string>;
+  signAuthChallenge: (xdr: string, networkPassphrase: string) => Promise<string>;
 }
 
 const WalletContext = createContext<WalletState | null>(null);
@@ -39,12 +40,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [kitReady, setKitReady] = useState(false);
 
   // Init kit on mount (browser only)
   useEffect(() => {
     initKit();
-    setKitReady(true);
 
     // Self-heal any settlement records that failed to deliver on a prior visit
     // (open bug B2): re-attempt every persisted outbox write on app load.
@@ -105,9 +104,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return signedTxXdr;
   }, []);
 
+  const signAuthChallenge = useCallback(async (xdr: string, networkPassphrase: string): Promise<string> => {
+    const { signedTxXdr } = await StellarWalletsKit.signTransaction(xdr, { networkPassphrase });
+    return signedTxXdr;
+  }, []);
+
   return (
     <WalletContext.Provider
-      value={{ address, isConnecting, error, connect, disconnect, signTransaction }}
+      value={{ address, isConnecting, error, connect, disconnect, signTransaction, signAuthChallenge }}
     >
       {children}
     </WalletContext.Provider>

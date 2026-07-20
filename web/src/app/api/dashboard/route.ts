@@ -13,6 +13,8 @@ import {
   toRecentSale,
   type DashboardEventInput,
 } from "@/lib/dashboard-aggregation";
+import { getPlatformContext } from "@/lib/auth-session";
+import { businessWalletAddresses } from "@/lib/api-access";
 
 const SUCCESS_TYPES = [
   "payment.settled",
@@ -41,17 +43,20 @@ function asDashboardEvents(events: Array<Prisma.EventGetPayload<{ include: typeo
 }
 
 export async function GET(req: NextRequest) {
-  const merchant = req.nextUrl.searchParams.get("merchant");
-  if (!merchant) return NextResponse.json({ error: "merchant required" }, { status: 400 });
+  const context = await getPlatformContext();
+  if (!context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const walletAddresses = businessWalletAddresses(context);
+  const resourceFilter = { OR: [{ businessId: context.businessId }, { merchant: { in: walletAddresses } }] };
 
   const now = new Date();
   const range = parseDashboardRange(req.nextUrl.searchParams.get("range"));
   const { currentStart, currentEnd, previousStart } = dashboardWindow(now, range);
   const merchantEventFilter: Prisma.EventWhereInput = {
     OR: [
-      { data: { path: ["merchant"], equals: merchant } },
-      { paymentLink: { merchant } },
-      { subscription: { merchant } },
+      { businessId: context.businessId },
+      ...walletAddresses.map((address) => ({ data: { path: ["merchant"], equals: address } })),
+      { paymentLink: resourceFilter },
+      { subscription: resourceFilter },
     ],
   };
 
@@ -66,7 +71,7 @@ export async function GET(req: NextRequest) {
     planCount,
   ] = await Promise.all([
     db.subscription.findMany({
-      where: { merchant },
+      where: resourceFilter,
       include: {
         plan: {
           select: {
@@ -100,19 +105,19 @@ export async function GET(req: NextRequest) {
       select: { id: true },
     }),
     db.paymentLink.findMany({
-      where: { merchant, archivedAt: null },
+      where: { AND: [resourceFilter, { archivedAt: null }] },
       orderBy: { createdAt: "desc" },
       take: 1,
       select: { numericId: true, productName: true },
     }),
     db.plan.findMany({
-      where: { merchant, archivedAt: null },
+      where: { AND: [resourceFilter, { archivedAt: null }] },
       orderBy: { createdAt: "desc" },
       take: 1,
       select: { onChainId: true, productName: true },
     }),
-    db.paymentLink.count({ where: { merchant, archivedAt: null } }),
-    db.plan.count({ where: { merchant, archivedAt: null } }),
+    db.paymentLink.count({ where: { AND: [resourceFilter, { archivedAt: null }] } }),
+    db.plan.count({ where: { AND: [resourceFilter, { archivedAt: null }] } }),
   ]);
 
   const periodEvents = asDashboardEvents(periodEventsRaw);

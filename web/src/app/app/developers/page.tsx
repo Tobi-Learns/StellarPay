@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useWallet } from "@/lib/wallet-context";
 import { SkeletonRow } from "@/components/skeleton";
 
 interface WebhookRecord {
@@ -31,7 +30,6 @@ interface NewKey {
 }
 
 export default function DevelopersPage() {
-  const { address } = useWallet();
   const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
   const [webhooks, setWebhooks] = useState<WebhookRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,26 +47,23 @@ export default function DevelopersPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!address) return;
-    const enc = encodeURIComponent(address);
     Promise.all([
-      fetch(`/api/keys?merchant=${enc}`).then((r) => r.json()).catch(() => []),
-      fetch(`/api/webhooks?merchant=${enc}`).then((r) => r.json()).catch(() => []),
+      fetch("/api/keys").then((r) => r.json()).catch(() => []),
+      fetch("/api/webhooks").then((r) => r.json()).catch(() => []),
     ]).then(([keyData, hookData]) => {
       if (Array.isArray(keyData)) setKeys(keyData);
       if (Array.isArray(hookData)) setWebhooks(hookData);
     }).finally(() => setLoading(false));
-  }, [address]);
+  }, []);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!address) return;
     setCreating(true);
     try {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant: address, name: keyName.trim() || null }),
+        body: JSON.stringify({ name: keyName.trim() || null }),
       });
       const data = await res.json();
       setNewKey({ id: data.id, key: data.key, prefix: data.prefix });
@@ -82,13 +77,12 @@ export default function DevelopersPage() {
 
   async function handleAddWebhook(e: React.FormEvent) {
     e.preventDefault();
-    if (!address) return;
     setAddingWebhook(true);
     try {
       const res = await fetch("/api/webhooks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merchant: address, url: webhookUrl.trim() }),
+        body: JSON.stringify({ url: webhookUrl.trim() }),
       });
       const data = await res.json();
       if (!res.ok) { alert(data.error); return; }

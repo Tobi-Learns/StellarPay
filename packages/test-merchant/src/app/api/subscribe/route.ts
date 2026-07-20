@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE = process.env.STELLARPAY_API_BASE!;
+const API_KEY = process.env.STELLARPAY_API_KEY;
+
+function platformHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...(API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {}),
+  };
+}
 
 // Server-side proxies to the StellarPay platform API. The browser (port 3001)
 // can't call the platform (port 3000) directly (CORS), so subscription reads and
@@ -38,7 +46,7 @@ export async function PATCH(req: NextRequest) {
 
     const res = await fetch(`${API_BASE}/api/subscriptions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: platformHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -65,7 +73,7 @@ export async function PUT(req: NextRequest) {
     }
     const res = await fetch(`${API_BASE}/api/subscriptions/${onChainId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: platformHeaders(),
       body: JSON.stringify({ status }),
     });
     if (!res.ok) {

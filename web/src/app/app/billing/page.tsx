@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useWallet } from "@/lib/wallet-context";
 import { formatUsdc, truncateAddress } from "@/lib/stellar";
-import { loadPlans, loadSubscriptions, type StoredPlan, type StoredSubscription } from "@/lib/plans";
+import { type StoredPlan, type StoredSubscription } from "@/lib/plans";
 import { SkeletonRow } from "@/components/skeleton";
 
 type PlanRow = Omit<StoredPlan, "description"> & {
@@ -44,7 +43,6 @@ function statusPill(status: string) {
 }
 
 export default function BillingPage() {
-  const { address } = useWallet();
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [subs, setSubs] = useState<SubscriptionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,13 +51,9 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("all");
 
   useEffect(() => {
-    if (!address) return;
-
-    const enc = encodeURIComponent(address);
-
     Promise.all([
-      fetch(`/api/plans?merchant=${enc}`).then((r) => r.json()).catch(() => null),
-      fetch(`/api/subscriptions?merchant=${enc}`).then((r) => r.json()).catch(() => null),
+      fetch("/api/plans").then((r) => r.json()).catch(() => null),
+      fetch("/api/subscriptions").then((r) => r.json()).catch(() => null),
     ]).then(([apiPlans, apiSubs]) => {
       setPlans(
         Array.isArray(apiPlans) && apiPlans.length > 0
@@ -79,7 +73,7 @@ export default function BillingPage() {
               activeSubscriberCount?: number;
               createdAt: string;
             }) => ({ ...p, createdAt: new Date(p.createdAt).getTime() }))
-          : loadPlans().filter((p) => p.merchant === address)
+          : []
       );
       setSubs(
         Array.isArray(apiSubs) && apiSubs.length > 0
@@ -105,10 +99,10 @@ export default function BillingPage() {
               intervalLabel: s.plan?.intervalLabel ?? "",
               createdAt: new Date(s.createdAt).getTime(),
             }))
-          : loadSubscriptions().filter((s) => s.merchant === address)
+          : []
       );
     }).finally(() => setLoading(false));
-  }, [address]);
+  }, []);
 
   const filteredPlans = useMemo(() => {
     const q = query.trim().toLowerCase();

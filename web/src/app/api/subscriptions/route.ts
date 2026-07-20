@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { newId } from "@/lib/ids";
+import { getBusinessAccess } from "@/lib/api-access";
 
 export async function GET(req: NextRequest) {
-  const merchant = req.nextUrl.searchParams.get("merchant");
   const subscriber = req.nextUrl.searchParams.get("subscriber");
 
-  if (!merchant && !subscriber) {
-    return NextResponse.json({ error: "merchant or subscriber required" }, { status: 400 });
-  }
+  const access = subscriber ? null : await getBusinessAccess(req);
+  if (!subscriber && !access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const subs = await db.subscription.findMany({
-    where: merchant ? { merchant } : { subscriber: subscriber! },
+    where: subscriber ? { subscriber } : { businessId: access!.businessId },
     orderBy: { createdAt: "desc" },
     include: {
       plan: {
@@ -37,6 +36,22 @@ export async function POST(req: NextRequest) {
   if (!onChainId || !planOnChainId || !subscriber || !merchant || !amount) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
+  const plan = await db.plan.findUnique({
+    where: { onChainId: planOnChainId },
+    select: { businessId: true, settlementWalletId: true, merchant: true, amount: true },
+  });
+  if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+  if (merchant !== plan.merchant || amount !== plan.amount) {
+    return NextResponse.json({ error: "Subscription settlement details do not match the plan" }, { status: 400 });
+  }
+
+  const authorization = req.headers.get("authorization");
+  if (authorization) {
+    const access = await getBusinessAccess(req);
+    if (!access || access.businessId !== plan.businessId) {
+      return NextResponse.json({ error: "API key does not own this plan" }, { status: 403 });
+    }
+  }
 
   // Duplicate-subscription guard (2.4h/3.3c): at most one Active sub per
   // (subscriber, plan). A needsReauthorization sub is still Active; a Canceled
@@ -60,7 +75,9 @@ export async function POST(req: NextRequest) {
       onChainId,
       planOnChainId,
       subscriber,
-      merchant,
+      merchant: plan.merchant,
+      businessId: plan.businessId,
+      settlementWalletId: plan.settlementWalletId,
       amount,
       payerName,
       payerEmail,

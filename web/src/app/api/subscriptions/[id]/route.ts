@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getSubscription } from "@/lib/stellar";
+import { getPlatformContext } from "@/lib/auth-session";
+import { getBusinessAccess } from "@/lib/api-access";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const manage = req.nextUrl.searchParams.get("manage") === "1";
+  const context = manage ? await getPlatformContext() : null;
+  if (manage && !context) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const sub = await db.subscription.findUnique({
     where: { onChainId: id },
     include: {
@@ -23,6 +28,9 @@ export async function GET(
     },
   });
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (manage && sub.businessId !== context?.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const events = await db.event.findMany({
     where: {
@@ -59,9 +67,16 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const access = await getBusinessAccess(req);
+  if (!access) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { status } = await req.json();
 
   if (!status) return NextResponse.json({ error: "status required" }, { status: 400 });
+
+  const existing = await db.subscription.findUnique({ where: { onChainId: id }, select: { businessId: true } });
+  if (!existing || existing.businessId !== access.businessId) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const sub = await db.subscription.update({
     where: { onChainId: id },

@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useWallet } from "@/lib/wallet-context";
 import { parseUsdc } from "@/lib/stellar";
 import { saveLink } from "@/lib/payment-links";
 import { snowflakeU64 } from "@/lib/ids";
 
 export default function NewPaymentPage() {
-  const { address } = useWallet();
   const router = useRouter();
   const [productName, setProductName] = useState("");
   const [amount, setAmount] = useState("");
@@ -19,17 +17,16 @@ export default function NewPaymentPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!address) return;
     if (!productName.trim() || !amount) {
       setError("Add a product or service name and amount.");
       return;
     }
 
     const id = snowflakeU64().toString();
-    const data = {
+    const amountStroops = parseUsdc(amount).toString();
+    const draft = {
       id,
-      merchant: address,
-      amount: parseUsdc(amount).toString(),
+      amount: amountStroops,
       productName: productName.trim(),
       description: description.trim(),
       createdAt: Date.now(),
@@ -42,10 +39,9 @@ export default function NewPaymentPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         numericId: id,
-        merchant: address,
-        amount: data.amount,
-        productName: data.productName,
-        description: data.description,
+        amount: amountStroops,
+        productName: draft.productName,
+        description: draft.description,
       }),
     }).catch(() => null);
 
@@ -54,7 +50,12 @@ export default function NewPaymentPage() {
       return;
     }
 
-    saveLink({ ...data, url });
+    const created = res ? await res.json() as { merchant: string } : null;
+    if (!created?.merchant) {
+      setError("Payment link could not be saved. Please try again.");
+      return;
+    }
+    saveLink({ ...draft, merchant: created.merchant, url });
     setLinkUrl(url);
   }
 
@@ -102,9 +103,6 @@ export default function NewPaymentPage() {
         <p className="text-sm text-neutral-500 mt-1">Create a hosted checkout URL for a one-time product or service.</p>
       </div>
 
-      {!address ? (
-        <p className="text-sm text-neutral-400">Connect your wallet first.</p>
-      ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -152,9 +150,7 @@ export default function NewPaymentPage() {
               />
             </div>
 
-            <p className="text-xs text-neutral-400">
-              Merchant: <span className="font-mono">{address}</span>
-            </p>
+            <p className="text-xs text-neutral-400">The Business&apos;s current settlement wallet will receive payments.</p>
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
@@ -173,7 +169,6 @@ export default function NewPaymentPage() {
             {description.trim() && <p className="text-sm text-neutral-500 mt-3">{description.trim()}</p>}
           </aside>
         </div>
-      )}
     </div>
   );
 }
